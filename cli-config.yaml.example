@@ -656,6 +656,14 @@ platform_toolsets:
 #     reply_to_mode: "first"  # off | first | all
 #     extra:
 #       disable_link_previews: false  # Set true to suppress Telegram URL previews in bot messages
+#   line:
+#     enabled: true
+#     extra:
+#       channel_access_token: "${LINE_CHANNEL_ACCESS_TOKEN}"
+#       channel_secret: "${LINE_CHANNEL_SECRET}"
+#       webhook_host: "0.0.0.0"
+#       webhook_port: 8646
+#       webhook_path: "/line/webhook"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Available toolsets (use these names in platform_toolsets or the toolsets list)

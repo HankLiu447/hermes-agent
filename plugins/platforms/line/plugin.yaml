@@ -1,0 +1,11 @@
+name: line-platform
+kind: platform
+version: 1.0.0
+description: >
+  LINE Messaging API gateway adapter for Hermes Agent.
+  Receives LINE webhook events, verifies LINE signatures, and sends
+  replies through the LINE reply and push APIs.
+author: Hank Liu
+requires_env:
+  - LINE_CHANNEL_ACCESS_TOKEN
+  - LINE_CHANNEL_SECRET

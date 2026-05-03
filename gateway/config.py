@@ -1569,9 +1569,8 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
             pass
 
     # Registry-driven enable for plugin platforms.  Built-ins have explicit
-    # blocks above; plugins expose check_fn() which is the single source of
-    # truth for "are my env vars set?".  When it returns True, ensure the
-    # platform is enabled so start() will create its adapter.
+    # blocks above.  Plugin check_fn() covers dependencies; validate_config()
+    # covers credentials/config, including config.yaml-only setups.
     try:
         from hermes_cli.plugins import discover_plugins
         discover_plugins()  # idempotent
@@ -1584,8 +1583,24 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                 logger.debug("check_fn for %s raised: %s", entry.name, e)
                 continue
             platform = Platform(entry.name)
-            if platform not in config.platforms:
-                config.platforms[platform] = PlatformConfig()
-            config.platforms[platform].enabled = True
+            platform_config = config.platforms.get(platform) or PlatformConfig()
+            if entry.validate_config is not None:
+                try:
+                    if not entry.validate_config(platform_config):
+                        continue
+                except Exception as e:
+                    logger.debug("validate_config for %s raised: %s", entry.name, e)
+                    continue
+            config.platforms[platform] = platform_config
+            platform_config.enabled = True
+            env_prefix = entry.name.upper().replace("-", "_")
+            home = os.getenv(f"{env_prefix}_HOME_CHANNEL")
+            if home:
+                platform_config.home_channel = HomeChannel(
+                    platform=platform,
+                    chat_id=home,
+                    name=os.getenv(f"{env_prefix}_HOME_CHANNEL_NAME", "Home"),
+                    thread_id=os.getenv(f"{env_prefix}_HOME_CHANNEL_THREAD_ID") or None,
+                )
     except Exception as e:
         logger.debug("Plugin platform enable pass failed: %s", e)
