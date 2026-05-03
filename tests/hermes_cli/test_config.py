@@ -11,6 +11,7 @@ from hermes_cli.config import (
     get_hermes_home,
     ensure_hermes_home,
     get_compatible_custom_providers,
+    load_agent_system_prompt,
     load_config,
     load_env,
     migrate_config,
@@ -66,6 +67,7 @@ class TestLoadConfigDefaults:
             config = load_config()
             assert config["model"] == DEFAULT_CONFIG["model"]
             assert config["agent"]["max_turns"] == DEFAULT_CONFIG["agent"]["max_turns"]
+            assert config["agent"]["system_prompt_files"] == []
             assert "max_turns" not in config
             assert "terminal" in config
             assert config["terminal"]["backend"] == "local"
@@ -79,6 +81,63 @@ class TestLoadConfigDefaults:
             config = load_config()
             assert config["agent"]["max_turns"] == 42
             assert "max_turns" not in config
+
+
+class TestLoadAgentSystemPrompt:
+    def test_combines_inline_prompt_and_private_files(self, tmp_path):
+        prompt_dir = tmp_path / "persona"
+        prompt_dir.mkdir()
+        (prompt_dir / "xiaoxi.md").write_text("Private persona.", encoding="utf-8")
+
+        config = {
+            "agent": {
+                "system_prompt": "Inline prompt.",
+                "system_prompt_files": ["persona/xiaoxi.md"],
+            }
+        }
+
+        prompt = load_agent_system_prompt(config, env_prompt="", base_dir=tmp_path)
+
+        assert prompt == "Inline prompt.\n\nPrivate persona."
+
+    def test_accepts_single_string_prompt_file(self, tmp_path):
+        prompt_file = tmp_path / "persona.md"
+        prompt_file.write_text("Single file prompt.", encoding="utf-8")
+
+        prompt = load_agent_system_prompt(
+            {"agent": {"system_prompt_files": str(prompt_file)}},
+            env_prompt="",
+        )
+
+        assert prompt == "Single file prompt."
+
+    def test_env_prompt_overrides_config_and_files(self, tmp_path):
+        prompt_file = tmp_path / "persona.md"
+        prompt_file.write_text("File prompt.", encoding="utf-8")
+        config = {
+            "agent": {
+                "system_prompt": "Inline prompt.",
+                "system_prompt_files": [str(prompt_file)],
+            }
+        }
+
+        prompt = load_agent_system_prompt(config, env_prompt="Env prompt.")
+
+        assert prompt == "Env prompt."
+
+    def test_missing_prompt_file_is_skipped_and_logged(self, tmp_path):
+        log = MagicMock()
+        config = {"agent": {"system_prompt_files": ["missing.md"]}}
+
+        prompt = load_agent_system_prompt(
+            config,
+            env_prompt="",
+            base_dir=tmp_path,
+            log=log,
+        )
+
+        assert prompt == ""
+        log.warning.assert_called_once()
 
 
 class TestSaveAndLoadRoundtrip:

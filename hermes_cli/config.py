@@ -462,6 +462,11 @@ DEFAULT_CONFIG = {
         # remains available as a tool regardless of this setting — the routing
         # only controls how inbound user images are presented.
         "image_input_mode": "auto",
+        # Additional private system prompt fragments. Paths support "~",
+        # environment variables, and paths relative to HERMES_HOME. This keeps
+        # personal persona files out of config.yaml and git history while still
+        # letting CLI, TUI, and gateway sessions share the same overlay.
+        "system_prompt_files": [],
         "disabled_toolsets": [],
     },
     
@@ -3819,6 +3824,71 @@ def cfg_get(cfg: Optional[Dict[str, Any]], *keys: str, default: Any = None) -> A
             return default
         node = node[key]
     return node
+
+
+def _coerce_system_prompt_files(value: Any) -> List[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, (str, os.PathLike)):
+        return [os.fspath(value)]
+    if isinstance(value, (list, tuple)):
+        return [os.fspath(item) for item in value if item not in (None, "")]
+    return []
+
+
+def _resolve_system_prompt_file(path: str, base_dir: Optional[Path] = None) -> Path:
+    expanded = Path(os.path.expandvars(os.path.expanduser(path)))
+    if expanded.is_absolute():
+        return expanded
+    return (base_dir or get_hermes_home()) / expanded
+
+
+def load_agent_system_prompt(
+    config: Optional[Dict[str, Any]],
+    *,
+    env_prompt: Optional[str] = None,
+    base_dir: Optional[Path] = None,
+    log: Optional[logging.Logger] = None,
+) -> str:
+    """Return agent.system_prompt plus configured private prompt files.
+
+    ``HERMES_EPHEMERAL_SYSTEM_PROMPT`` keeps the historical precedence: when
+    set, it fully overrides config.yaml and prompt files. Prompt files are read
+    at startup/session creation time by the caller and are intentionally not
+    written back into config.yaml or session transcripts.
+    """
+    prompt_from_env = (
+        os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "")
+        if env_prompt is None
+        else env_prompt
+    )
+    if prompt_from_env:
+        return str(prompt_from_env).strip()
+
+    parts: List[str] = []
+    inline_prompt = cfg_get(config, "agent", "system_prompt", default="") or ""
+    if inline_prompt:
+        parts.append(str(inline_prompt).strip())
+
+    prompt_files = _coerce_system_prompt_files(
+        cfg_get(config, "agent", "system_prompt_files", default=[])
+    )
+    for prompt_file in prompt_files:
+        path = _resolve_system_prompt_file(prompt_file, base_dir=base_dir)
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            if log:
+                log.warning("System prompt file not found: %s", path)
+            continue
+        except OSError as exc:
+            if log:
+                log.warning("Failed to read system prompt file %s: %s", path, exc)
+            continue
+        if content:
+            parts.append(content)
+
+    return "\n\n".join(part for part in parts if part).strip()
 
 
 

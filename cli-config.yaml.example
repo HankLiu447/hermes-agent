@@ -562,6 +562,12 @@ agent:
   
   # Enable verbose logging
   verbose: false
+
+  # Optional private prompt fragments appended after agent.system_prompt.
+  # Paths support ~, environment variables, and paths relative to HERMES_HOME.
+  # Keep private persona or user-context files here instead of committing them.
+  # system_prompt_files:
+  #   - persona/xiaoxi/system-prompt.md
   
   # Reasoning effort level (OpenRouter and Nous Portal)
   # Controls how much "thinking" the model does before responding.

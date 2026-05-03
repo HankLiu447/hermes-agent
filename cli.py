@@ -307,6 +307,7 @@ def load_cli_config() -> Dict[str, Any]:
             "max_turns": 90,  # Default max tool-calling iterations (shared with subagents)
             "verbose": False,
             "system_prompt": "",
+            "system_prompt_files": [],
             "prefill_messages_file": "",
             "reasoning_effort": "",
             "service_tier": "",
@@ -2156,10 +2157,15 @@ class HermesCLI:
         # AGENTS.md/SOUL.md/.cursorrules and persistent memory are not loaded.
         self.ignore_rules = ignore_rules or os.environ.get("HERMES_IGNORE_RULES") == "1"
         
-        # Ephemeral system prompt: env var takes precedence, then config
-        self.system_prompt = (
-            os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "")
-            or CLI_CONFIG["agent"].get("system_prompt", "")
+        # Ephemeral system prompt: env var takes precedence, then config +
+        # private prompt files.
+        from hermes_cli.config import load_agent_system_prompt
+
+        self.system_prompt = load_agent_system_prompt(
+            CLI_CONFIG,
+            env_prompt=os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", ""),
+            base_dir=_hermes_home,
+            log=logger,
         )
         self.personalities = CLI_CONFIG["agent"].get("personalities", {})
         
