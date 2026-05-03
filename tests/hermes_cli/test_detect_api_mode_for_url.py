@@ -24,6 +24,9 @@ class TestCodexResponsesDetection:
     def test_xai_api_returns_codex_responses(self):
         assert _detect_api_mode_for_url("https://api.x.ai/v1") == "codex_responses"
 
+    def test_flysuiteai_codex_path_returns_codex_responses(self):
+        assert _detect_api_mode_for_url("http://127.0.0.1:8089/v1/codex") == "codex_responses"
+
     def test_openrouter_is_not_codex_responses(self):
         # api.openai.com check must exclude openrouter (which routes to openai-hosted models).
         assert _detect_api_mode_for_url("https://openrouter.ai/api/v1") is None

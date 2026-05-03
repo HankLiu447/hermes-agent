@@ -14,6 +14,7 @@ from hermes_cli.auth import (
     resolve_external_process_provider_credentials,
     get_auth_status,
     AuthError,
+    DEFAULT_FLYSUITEAI_BASE_URL,
     KIMI_CODE_BASE_URL,
     STEPFUN_STEP_PLAN_INTL_BASE_URL,
     STEPFUN_STEP_PLAN_CN_BASE_URL,
@@ -35,6 +36,7 @@ class TestProviderRegistry:
         ("huggingface", "Hugging Face", "api_key"),
         ("zai", "Z.AI / GLM", "api_key"),
         ("xai", "xAI", "api_key"),
+        ("flysuiteai", "FlySuiteAI", "api_key"),
         ("nvidia", "NVIDIA NIM", "api_key"),
         ("kimi-coding", "Kimi / Moonshot", "api_key"),
         ("stepfun", "StepFun Step Plan", "api_key"),
@@ -61,6 +63,12 @@ class TestProviderRegistry:
         assert pconfig.api_key_env_vars == ("XAI_API_KEY",)
         assert pconfig.base_url_env_var == "XAI_BASE_URL"
         assert pconfig.inference_base_url == "https://api.x.ai/v1"
+
+    def test_flysuiteai_env_vars(self):
+        pconfig = PROVIDER_REGISTRY["flysuiteai"]
+        assert pconfig.api_key_env_vars == ("FLYSUITEAI_API_KEY", "FLYSUITE_AI_API_KEY")
+        assert pconfig.base_url_env_var == "FLYSUITEAI_BASE_URL"
+        assert pconfig.inference_base_url == DEFAULT_FLYSUITEAI_BASE_URL
 
     def test_nvidia_env_vars(self):
         pconfig = PROVIDER_REGISTRY["nvidia"]
@@ -129,6 +137,7 @@ class TestProviderRegistry:
         assert PROVIDER_REGISTRY["kilocode"].inference_base_url == "https://api.kilo.ai/api/gateway"
         assert PROVIDER_REGISTRY["gmi"].inference_base_url == "https://api.gmi-serving.com/v1"
         assert PROVIDER_REGISTRY["huggingface"].inference_base_url == "https://router.huggingface.co/v1"
+        assert PROVIDER_REGISTRY["flysuiteai"].inference_base_url == DEFAULT_FLYSUITEAI_BASE_URL
 
     def test_oauth_providers_unchanged(self):
         """Ensure we didn't break the existing OAuth providers."""
@@ -147,6 +156,7 @@ PROVIDER_ENV_VARS = (
     "CLAUDE_CODE_OAUTH_TOKEN",
     "LM_API_KEY", "LM_BASE_URL",
     "GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY",
+    "FLYSUITEAI_API_KEY", "FLYSUITE_AI_API_KEY", "FLYSUITEAI_BASE_URL", "FLYSUITE_AI_BASE_URL",
     "KIMI_API_KEY", "KIMI_BASE_URL", "STEPFUN_API_KEY", "STEPFUN_BASE_URL",
     "MINIMAX_API_KEY", "MINIMAX_CN_API_KEY",
     "AI_GATEWAY_API_KEY", "AI_GATEWAY_BASE_URL",
@@ -198,6 +208,10 @@ class TestResolveProvider:
 
     def test_alias_zhipu(self):
         assert resolve_provider("zhipu") == "zai"
+
+    def test_alias_flysuite_ai(self):
+        assert resolve_provider("flysuite-ai") == "flysuiteai"
+        assert resolve_provider("fsa-ai") == "flysuiteai"
 
     def test_alias_kimi(self):
         assert resolve_provider("kimi") == "kimi-coding"
@@ -307,6 +321,10 @@ class TestResolveProvider:
         monkeypatch.setenv("HF_TOKEN", "hf_test_token")
         assert resolve_provider("auto") == "huggingface"
 
+    def test_auto_detects_flysuiteai_key(self, monkeypatch):
+        monkeypatch.setenv("FLYSUITEAI_API_KEY", "sk-proxy-test-key")
+        assert resolve_provider("auto") == "flysuiteai"
+
     def test_openrouter_takes_priority_over_glm(self, monkeypatch):
         """OpenRouter API key should win over GLM in auto-detection."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
@@ -372,6 +390,12 @@ class TestApiKeyProviderStatus:
         assert status["configured"] is True
         assert status["provider"] == "minimax"
 
+    def test_flysuiteai_status_uses_local_codex_base_url(self, monkeypatch):
+        monkeypatch.setenv("FLYSUITEAI_API_KEY", "sk-proxy-test-key")
+        status = get_api_key_provider_status("flysuiteai")
+        assert status["configured"] is True
+        assert status["base_url"] == DEFAULT_FLYSUITEAI_BASE_URL
+
     def test_copilot_acp_status_detects_local_cli(self, monkeypatch):
         monkeypatch.setenv("HERMES_COPILOT_ACP_ARGS", "--acp --stdio --debug")
         monkeypatch.setattr("hermes_cli.auth.shutil.which", lambda command: f"/usr/local/bin/{command}")
@@ -412,6 +436,20 @@ class TestResolveApiKeyProviderCredentials:
         assert creds["api_key"] == "glm-secret-key"
         assert creds["base_url"] == "https://api.z.ai/api/paas/v4"
         assert creds["source"] == "GLM_API_KEY"
+
+    def test_resolve_flysuiteai_with_key(self, monkeypatch):
+        monkeypatch.setenv("FLYSUITEAI_API_KEY", "sk-proxy-test-key")
+        creds = resolve_api_key_provider_credentials("flysuiteai")
+        assert creds["provider"] == "flysuiteai"
+        assert creds["api_key"] == "sk-proxy-test-key"
+        assert creds["base_url"] == DEFAULT_FLYSUITEAI_BASE_URL
+        assert creds["source"] == "FLYSUITEAI_API_KEY"
+
+    def test_resolve_flysuiteai_with_alt_base_url_env(self, monkeypatch):
+        monkeypatch.setenv("FLYSUITEAI_API_KEY", "sk-proxy-test-key")
+        monkeypatch.setenv("FLYSUITE_AI_BASE_URL", "http://192.168.60.150:8089/v1/codex")
+        creds = resolve_api_key_provider_credentials("flysuiteai")
+        assert creds["base_url"] == "http://192.168.60.150:8089/v1/codex"
 
     def test_resolve_copilot_with_github_token(self, monkeypatch):
         monkeypatch.setenv("GITHUB_TOKEN", "gh-env-secret")

@@ -202,6 +202,11 @@ class TestProviderModelIds:
     def test_zai_returns_glm_models(self):
         assert "glm-5" in provider_model_ids("zai")
 
+    def test_flysuiteai_returns_codex_models(self):
+        ids = provider_model_ids("flysuiteai")
+        assert "gpt-5.5" in ids
+        assert "gpt-5.3-codex-spark" in ids
+
     def test_stepfun_prefers_live_catalog(self):
         with patch(
             "hermes_cli.auth.resolve_api_key_provider_credentials",

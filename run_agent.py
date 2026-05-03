@@ -1044,7 +1044,7 @@ class AIAgent:
             self.api_mode = api_mode
         elif self.provider == "openai-codex":
             self.api_mode = "codex_responses"
-        elif self.provider == "xai":
+        elif self.provider in {"flysuiteai", "xai"}:
             self.api_mode = "codex_responses"
         elif (provider_name is None) and (
             self._base_url_hostname == "chatgpt.com"
@@ -1052,6 +1052,9 @@ class AIAgent:
         ):
             self.api_mode = "codex_responses"
             self.provider = "openai-codex"
+        elif (provider_name is None) and self._base_url_lower.rstrip("/").endswith("/v1/codex"):
+            self.api_mode = "codex_responses"
+            self.provider = "flysuiteai"
         elif (provider_name is None) and self._base_url_hostname == "api.x.ai":
             self.api_mode = "codex_responses"
             self.provider = "xai"
@@ -7558,7 +7561,7 @@ class AIAgent:
             fb_api_mode = "chat_completions"
             fb_base_url = str(fb_client.base_url)
             _fb_is_azure = self._is_azure_openai_url(fb_base_url)
-            if fb_provider == "openai-codex":
+            if fb_provider in {"flysuiteai", "openai-codex"}:
                 fb_api_mode = "codex_responses"
             elif fb_provider == "anthropic" or fb_base_url.rstrip("/").lower().endswith("/anthropic"):
                 fb_api_mode = "anthropic_messages"
@@ -8330,11 +8333,12 @@ class AIAgent:
                 or base_url_host_matches(self.base_url, "api.githubcopilot.com")
             )
             is_codex_backend = (
-                self.provider == "openai-codex"
+                self.provider in {"flysuiteai", "openai-codex"}
                 or (
                     self._base_url_hostname == "chatgpt.com"
                     and "/backend-api/codex" in self._base_url_lower
                 )
+                or self._base_url_lower.rstrip("/").endswith("/v1/codex")
             )
             is_xai_responses = self.provider == "xai" or self._base_url_hostname == "api.x.ai"
             _msgs_for_codex = self._prepare_messages_for_non_vision_model(api_messages)

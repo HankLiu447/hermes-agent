@@ -60,6 +60,13 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
         auth_type="oauth_external",
         base_url_override="https://chatgpt.com/backend-api/codex",
     ),
+    "flysuiteai": HermesOverlay(
+        transport="codex_responses",
+        auth_type="api_key",
+        extra_env_vars=("FLYSUITEAI_API_KEY", "FLYSUITE_AI_API_KEY"),
+        base_url_override="http://127.0.0.1:8089/v1/codex",
+        base_url_env_var="FLYSUITEAI_BASE_URL",
+    ),
     "qwen-oauth": HermesOverlay(
         transport="openai_chat",
         auth_type="oauth_external",
@@ -240,6 +247,13 @@ ALIASES: Dict[str, str] = {
     "x.ai": "xai",
     "grok": "xai",
 
+    # FlySuiteAI local Codex proxy
+    "flysuite": "flysuiteai",
+    "flysuite-ai": "flysuiteai",
+    "flysuite_ai": "flysuiteai",
+    "flysuiteai-proxy": "flysuiteai",
+    "fsa-ai": "flysuiteai",
+
     # nvidia
     "nim": "nvidia",
     "nvidia-nim": "nvidia",
@@ -352,6 +366,7 @@ ALIASES: Dict[str, str] = {
 _LABEL_OVERRIDES: Dict[str, str] = {
     "nous": "Nous Portal",
     "openai-codex": "OpenAI Codex",
+    "flysuiteai": "FlySuiteAI",
     "copilot-acp": "GitHub Copilot ACP",
     "stepfun": "StepFun Step Plan",
     "xiaomi": "Xiaomi MiMo",
@@ -500,6 +515,8 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
                 return "anthropic_messages"
             if "api.openai.com" in url_lower:
                 return "codex_responses"
+            if url_lower.endswith("/v1/codex"):
+                return "codex_responses"
         return TRANSPORT_TO_API_MODE.get(pdef.transport, "chat_completions")
 
     # Direct provider checks for providers not in HERMES_OVERLAYS
@@ -515,6 +532,8 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
         if hostname == "api.kimi.com" and "/coding" in url_lower:
             return "anthropic_messages"
         if hostname == "api.openai.com":
+            return "codex_responses"
+        if url_lower.endswith("/v1/codex"):
             return "codex_responses"
         if hostname.startswith("bedrock-runtime.") and base_url_host_matches(base_url, "amazonaws.com"):
             return "bedrock_converse"

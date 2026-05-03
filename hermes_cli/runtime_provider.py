@@ -14,6 +14,7 @@ from agent.credential_pool import CredentialPool, PooledCredential, get_custom_p
 from hermes_cli.auth import (
     AuthError,
     DEFAULT_CODEX_BASE_URL,
+    DEFAULT_FLYSUITEAI_BASE_URL,
     DEFAULT_QWEN_BASE_URL,
     PROVIDER_REGISTRY,
     _agent_key_is_usable,
@@ -78,6 +79,8 @@ def _detect_api_mode_for_url(base_url: str) -> Optional[str]:
     if hostname == "api.x.ai":
         return "codex_responses"
     if hostname == "api.openai.com":
+        return "codex_responses"
+    if normalized.endswith("/v1/codex"):
         return "codex_responses"
     if normalized.endswith("/anthropic"):
         return "anthropic_messages"
@@ -199,6 +202,9 @@ def _resolve_runtime_from_pool_entry(
     if provider == "openai-codex":
         api_mode = "codex_responses"
         base_url = base_url or DEFAULT_CODEX_BASE_URL
+    elif provider == "flysuiteai":
+        api_mode = "codex_responses"
+        base_url = base_url or DEFAULT_FLYSUITEAI_BASE_URL
     elif provider == "qwen-oauth":
         api_mode = "chat_completions"
         base_url = base_url or DEFAULT_QWEN_BASE_URL
@@ -864,7 +870,7 @@ def _resolve_explicit_runtime(
         api_mode = "chat_completions"
         if provider == "copilot":
             api_mode = _copilot_runtime_api_mode(model_cfg, api_key)
-        elif provider == "xai":
+        elif provider in {"flysuiteai", "xai"}:
             api_mode = "codex_responses"
         else:
             configured_mode = _parse_api_mode(model_cfg.get("api_mode"))
@@ -1286,7 +1292,7 @@ def resolve_runtime_provider(
         api_mode = "chat_completions"
         if provider == "copilot":
             api_mode = _copilot_runtime_api_mode(model_cfg, creds.get("api_key", ""))
-        elif provider == "xai":
+        elif provider in {"flysuiteai", "xai"}:
             api_mode = "codex_responses"
         else:
             configured_provider = str(model_cfg.get("provider") or "").strip().lower()

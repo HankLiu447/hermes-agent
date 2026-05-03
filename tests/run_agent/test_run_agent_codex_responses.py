@@ -214,6 +214,37 @@ def test_api_mode_uses_explicit_provider_when_codex(monkeypatch):
     assert agent.provider == "openai-codex"
 
 
+def test_api_mode_uses_explicit_provider_when_flysuiteai(monkeypatch):
+    _patch_agent_bootstrap(monkeypatch)
+    agent = run_agent.AIAgent(
+        model="gpt-5.4-mini",
+        base_url="http://127.0.0.1:8089/v1/codex",
+        provider="flysuiteai",
+        api_key="sk-proxy-test-key",
+        quiet_mode=True,
+        max_iterations=1,
+        skip_context_files=True,
+        skip_memory=True,
+    )
+    assert agent.api_mode == "codex_responses"
+    assert agent.provider == "flysuiteai"
+
+
+def test_api_mode_detects_flysuiteai_codex_url(monkeypatch):
+    _patch_agent_bootstrap(monkeypatch)
+    agent = run_agent.AIAgent(
+        model="gpt-5.4-mini",
+        base_url="http://127.0.0.1:8089/v1/codex",
+        api_key="sk-proxy-test-key",
+        quiet_mode=True,
+        max_iterations=1,
+        skip_context_files=True,
+        skip_memory=True,
+    )
+    assert agent.api_mode == "codex_responses"
+    assert agent.provider == "flysuiteai"
+
+
 def test_api_mode_normalizes_provider_case(monkeypatch):
     _patch_agent_bootstrap(monkeypatch)
     agent = run_agent.AIAgent(
