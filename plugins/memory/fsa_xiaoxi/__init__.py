@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +28,12 @@ DEFAULT_CONTEXT_HOURS = 720
 DEFAULT_CONTEXT_LIMIT = 8
 DEFAULT_ONTOLOGY_LIMIT = 6
 DEFAULT_TIMEOUT_SECONDS = 2.0
+DEFAULT_RECALL_DEPTH = "fast"
+DEFAULT_BALANCED_CONTEXT_LIMIT = 12
+DEFAULT_BALANCED_ONTOLOGY_LIMIT = 8
+DEFAULT_DEEP_RECALL_LIMIT = 3
+DEFAULT_DEEP_RECALL_MIN_SCORE = 0.2
+DEFAULT_DEEP_RECALL_TIMEOUT_SECONDS = 12.0
 DEFAULT_SYNC_SCOPE = "codex"
 DEFAULT_SOURCE_CHANNEL = "hermes_line"
 
@@ -54,9 +61,25 @@ _INTERNAL_REPLACEMENTS = (
     (re.compile(r"\bhydrate\b", re.IGNORECASE), "上下文整理"),
     (re.compile(r"\bsystem prompt\b", re.IGNORECASE), "系統指示"),
     (re.compile(r"\bbridge\b", re.IGNORECASE), "銜接流程"),
+    (re.compile(r"\brecall\b", re.IGNORECASE), "回憶整理"),
     (re.compile(r"http://127\.0\.0\.1:\d+(?:/[^\s，。)]*)?"), "本機服務"),
     (re.compile(r"http://localhost:\d+(?:/[^\s，。)]*)?"), "本機服務"),
 )
+
+_AUTO_DEEP_RECALL_RE = re.compile(
+    r"(記得|記憶|回想|上次|之前|剛剛|最近|前面|我們.{0,12}(說|聊|做|處理)|"
+    r"延續|脈絡|context|recall|remember|previous|earlier|recent)",
+    re.IGNORECASE,
+)
+
+_SAFE_DEEP_MEMORY_TYPES = {
+    "episodic",
+    "semantic",
+    "profile",
+    "procedural",
+    "correction",
+    "assistant",
+}
 
 
 @dataclass
@@ -67,6 +90,13 @@ class FsaXiaoxiConfig:
     context_limit: int = DEFAULT_CONTEXT_LIMIT
     ontology_limit: int = DEFAULT_ONTOLOGY_LIMIT
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+    recall_depth: str = DEFAULT_RECALL_DEPTH
+    balanced_context_limit: int = DEFAULT_BALANCED_CONTEXT_LIMIT
+    balanced_ontology_limit: int = DEFAULT_BALANCED_ONTOLOGY_LIMIT
+    deep_recall_limit: int = DEFAULT_DEEP_RECALL_LIMIT
+    deep_recall_min_score: float = DEFAULT_DEEP_RECALL_MIN_SCORE
+    deep_recall_timeout_seconds: float = DEFAULT_DEEP_RECALL_TIMEOUT_SECONDS
+    diagnostics_enabled: bool = True
     sync_scope: str = DEFAULT_SYNC_SCOPE
     source_channel: str = DEFAULT_SOURCE_CHANNEL
     hank_line_user_ids: set[str] = field(default_factory=set)
@@ -143,6 +173,37 @@ def _load_config() -> FsaXiaoxiConfig:
         os.getenv("FSA_XIAOXI_TIMEOUT_SECONDS", _cfg_get(cfg, "timeout_seconds")),
         DEFAULT_TIMEOUT_SECONDS,
     )
+    recall_depth = str(
+        os.getenv("FSA_XIAOXI_RECALL_DEPTH")
+        or _cfg_get(cfg, "recall_depth")
+        or DEFAULT_RECALL_DEPTH
+    ).strip().lower()
+    if recall_depth not in {"fast", "balanced", "deep", "auto"}:
+        recall_depth = DEFAULT_RECALL_DEPTH
+    balanced_context_limit = _int_value(
+        os.getenv("FSA_XIAOXI_BALANCED_CONTEXT_LIMIT", _cfg_get(cfg, "balanced_context_limit")),
+        DEFAULT_BALANCED_CONTEXT_LIMIT,
+    )
+    balanced_ontology_limit = _int_value(
+        os.getenv("FSA_XIAOXI_BALANCED_ONTOLOGY_LIMIT", _cfg_get(cfg, "balanced_ontology_limit")),
+        DEFAULT_BALANCED_ONTOLOGY_LIMIT,
+    )
+    deep_recall_limit = _int_value(
+        os.getenv("FSA_XIAOXI_DEEP_RECALL_LIMIT", _cfg_get(cfg, "deep_recall_limit")),
+        DEFAULT_DEEP_RECALL_LIMIT,
+    )
+    deep_recall_min_score = _float_value(
+        os.getenv("FSA_XIAOXI_DEEP_RECALL_MIN_SCORE", _cfg_get(cfg, "deep_recall_min_score")),
+        DEFAULT_DEEP_RECALL_MIN_SCORE,
+    )
+    deep_recall_timeout_seconds = _float_value(
+        os.getenv("FSA_XIAOXI_DEEP_RECALL_TIMEOUT_SECONDS", _cfg_get(cfg, "deep_recall_timeout_seconds")),
+        DEFAULT_DEEP_RECALL_TIMEOUT_SECONDS,
+    )
+    diagnostics_enabled = _truthy(
+        os.getenv("FSA_XIAOXI_DIAGNOSTICS_ENABLED", _cfg_get(cfg, "diagnostics_enabled")),
+        default=True,
+    )
     sync_scope = str(_cfg_get(cfg, "sync_scope", DEFAULT_SYNC_SCOPE) or DEFAULT_SYNC_SCOPE)
     source_channel = str(
         _cfg_get(cfg, "source_channel", DEFAULT_SOURCE_CHANNEL) or DEFAULT_SOURCE_CHANNEL
@@ -160,6 +221,13 @@ def _load_config() -> FsaXiaoxiConfig:
         context_limit=max(1, context_limit),
         ontology_limit=max(1, ontology_limit),
         timeout_seconds=max(0.2, timeout_seconds),
+        recall_depth=recall_depth,
+        balanced_context_limit=max(1, balanced_context_limit),
+        balanced_ontology_limit=max(1, balanced_ontology_limit),
+        deep_recall_limit=max(1, min(10, deep_recall_limit)),
+        deep_recall_min_score=max(0.0, min(1.0, deep_recall_min_score)),
+        deep_recall_timeout_seconds=max(0.5, deep_recall_timeout_seconds),
+        diagnostics_enabled=diagnostics_enabled,
         sync_scope=sync_scope,
         source_channel=source_channel,
         hank_line_user_ids=hank_ids,
@@ -205,6 +273,7 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
         self._chat_type = ""
         self._gateway_session_key = ""
         self._last_sync_thread: Optional[threading.Thread] = None
+        self._last_recall_diagnostics: dict[str, Any] = {}
 
     @property
     def name(self) -> str:
@@ -236,31 +305,86 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
         if not clean_query:
             return ""
 
-        try:
-            memories = self._post_json(
+        depth = self._effective_recall_depth(clean_query)
+        context_limit, ontology_limit = self._limits_for_depth(depth)
+        diagnostics: dict[str, Any] = {
+            "configured_depth": self._config.recall_depth,
+            "effective_depth": depth,
+            "query_chars": len(clean_query),
+            "calls": {},
+            "degraded": False,
+        }
+        started = time.perf_counter()
+
+        memories = self._timed_call(
+            diagnostics,
+            "codex_context",
+            lambda: self._post_json(
                 "/memory/codex-context",
                 {
                     "query": clean_query,
                     "hours": self._config.context_hours,
-                    "limit": self._config.context_limit,
+                    "limit": context_limit,
                     "include_global": True,
                 },
-            )
-            facts = self._post_json(
+            ),
+        )
+        facts = self._timed_call(
+            diagnostics,
+            "ontology_recall",
+            lambda: self._post_json(
                 "/ontology/recall",
-                {"query": clean_query, "limit": self._config.ontology_limit},
+                {"query": clean_query, "limit": ontology_limit},
+            ),
+        )
+        state = {
+            "identity": self._timed_call(diagnostics, "state_identity", lambda: self._get_json("/state/identity")),
+            "active_context": self._timed_call(
+                diagnostics,
+                "state_active_context",
+                lambda: self._get_json("/state/active_context"),
+            ),
+            "open_tasks": self._timed_call(diagnostics, "state_open_tasks", lambda: self._get_json("/state/open_tasks")),
+            "immediate_narrative": self._timed_call(
+                diagnostics,
+                "state_immediate_narrative",
+                lambda: self._get_json("/state/immediate_narrative"),
+            ),
+        }
+        deep_recall = None
+        if depth == "deep":
+            deep_recall = self._timed_call(
+                diagnostics,
+                "memory_recall",
+                lambda: self._get_json_with_params(
+                    "/memory/recall",
+                    {
+                        "q": clean_query,
+                        "limit": self._config.deep_recall_limit,
+                        "min_score": self._config.deep_recall_min_score,
+                    },
+                    timeout=self._config.deep_recall_timeout_seconds,
+                ),
             )
-            state = {
-                "identity": self._get_json("/state/identity"),
-                "active_context": self._get_json("/state/active_context"),
-                "open_tasks": self._get_json("/state/open_tasks"),
-                "immediate_narrative": self._get_json("/state/immediate_narrative"),
-            }
-        except Exception as exc:
-            logger.debug("fsa_xiaoxi prefetch skipped: %s", exc)
-            return ""
 
-        return self._format_context(memories, facts, state)
+        context = self._format_context(
+            memories,
+            facts,
+            state,
+            deep_recall=deep_recall,
+            context_limit=context_limit,
+            ontology_limit=ontology_limit,
+        )
+        diagnostics["total_ms"] = int((time.perf_counter() - started) * 1000)
+        diagnostics["context_chars"] = len(context)
+        diagnostics["counts"] = {
+            "codex_context": self._payload_count(memories, "memories"),
+            "ontology": self._payload_count(facts, "facts"),
+            "deep_recall": self._payload_count(deep_recall, "results"),
+        }
+        self._last_recall_diagnostics = diagnostics
+        self._log_recall_diagnostics(diagnostics)
+        return context
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
         if not self.is_available() or not user_content or not assistant_content:
@@ -285,11 +409,23 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
         if thread and thread.is_alive():
             thread.join(timeout=1.0)
 
-    def _request_json(self, method: str, path: str, payload: Optional[dict[str, Any]] = None) -> Any:
+    @property
+    def last_recall_diagnostics(self) -> dict[str, Any]:
+        return dict(self._last_recall_diagnostics)
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        payload: Optional[dict[str, Any]] = None,
+        *,
+        params: Optional[dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+    ) -> Any:
         url = f"{self._config.base_url}{path}"
-        with httpx.Client(timeout=self._config.timeout_seconds) as client:
+        with httpx.Client(timeout=timeout or self._config.timeout_seconds) as client:
             if method == "GET":
-                response = client.get(url)
+                response = client.get(url, params=params)
             else:
                 response = client.post(url, json=payload or {})
             response.raise_for_status()
@@ -302,6 +438,15 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
 
     def _get_json(self, path: str) -> Any:
         return self._request_json("GET", path)
+
+    def _get_json_with_params(
+        self,
+        path: str,
+        params: dict[str, Any],
+        *,
+        timeout: Optional[float] = None,
+    ) -> Any:
+        return self._request_json("GET", path, params=params, timeout=timeout)
 
     def _should_inject_private_context(self) -> bool:
         if self._platform and self._platform.lower() != "line":
@@ -316,6 +461,81 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
         candidates = {self._user_id, self._chat_id}
         return bool(candidates & self._config.hank_line_user_ids)
 
+    def _is_hank_private_dm(self) -> bool:
+        if not self._should_inject_private_context():
+            return False
+        if self._config.hank_line_user_ids:
+            return bool({self._user_id, self._chat_id} & self._config.hank_line_user_ids)
+        return self._config.private_context_policy in {"dm", "line_dm"}
+
+    def _effective_recall_depth(self, query: str) -> str:
+        configured = self._config.recall_depth
+        if configured == "auto":
+            return "deep" if self._is_hank_private_dm() and _AUTO_DEEP_RECALL_RE.search(query) else "fast"
+        if configured == "deep" and not self._is_hank_private_dm():
+            return "balanced"
+        return configured
+
+    def _limits_for_depth(self, depth: str) -> tuple[int, int]:
+        if depth == "fast":
+            return self._config.context_limit, self._config.ontology_limit
+        return (
+            max(self._config.context_limit, self._config.balanced_context_limit),
+            max(self._config.ontology_limit, self._config.balanced_ontology_limit),
+        )
+
+    def _timed_call(self, diagnostics: dict[str, Any], name: str, func) -> Any:
+        started = time.perf_counter()
+        try:
+            value = func()
+        except Exception as exc:
+            diagnostics["degraded"] = True
+            diagnostics.setdefault("calls", {})[name] = {
+                "ok": False,
+                "ms": int((time.perf_counter() - started) * 1000),
+                "error": exc.__class__.__name__,
+            }
+            logger.debug("fsa_xiaoxi %s failed: %s", name, exc)
+            return None
+        diagnostics.setdefault("calls", {})[name] = {
+            "ok": True,
+            "ms": int((time.perf_counter() - started) * 1000),
+        }
+        return value
+
+    def _log_recall_diagnostics(self, diagnostics: dict[str, Any]) -> None:
+        if not self._config.diagnostics_enabled:
+            return
+        calls = diagnostics.get("calls") or {}
+        call_summary = ",".join(
+            f"{name}:{'ok' if data.get('ok') else 'fail'}:{data.get('ms', 0)}ms"
+            for name, data in sorted(calls.items())
+            if isinstance(data, dict)
+        )
+        logger.info(
+            "fsa_xiaoxi recall depth=%s configured=%s total_ms=%s context_chars=%s "
+            "counts=%s degraded=%s calls=%s platform=%s chat_type=%s",
+            diagnostics.get("effective_depth"),
+            diagnostics.get("configured_depth"),
+            diagnostics.get("total_ms"),
+            diagnostics.get("context_chars"),
+            diagnostics.get("counts"),
+            diagnostics.get("degraded"),
+            call_summary,
+            self._platform or "-",
+            self._chat_type or "-",
+        )
+
+    @staticmethod
+    def _payload_count(payload: Any, key: str) -> int:
+        if not isinstance(payload, dict):
+            return 0
+        value = payload.get("count")
+        if isinstance(value, int):
+            return value
+        items = payload.get(key)
+        return len(items) if isinstance(items, list) else 0
+
     def _memory_session_id(self) -> str:
         if self._should_inject_private_context():
             return "main"
@@ -325,18 +545,32 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
             return f"hermes:{self._platform}:{self._chat_id}"
         return self._session_id or "hermes:unknown"
 
-    def _format_context(self, memories: Any, facts: Any, state: dict[str, Any]) -> str:
+    def _format_context(
+        self,
+        memories: Any,
+        facts: Any,
+        state: dict[str, Any],
+        *,
+        deep_recall: Any = None,
+        context_limit: Optional[int] = None,
+        ontology_limit: Optional[int] = None,
+    ) -> str:
+        context_limit = context_limit or self._config.context_limit
+        ontology_limit = ontology_limit or self._config.ontology_limit
         recent_lines = self._extract_memory_lines(memories)
+        deep_lines = self._extract_deep_recall_lines(deep_recall)
         fact_lines = self._extract_fact_lines(facts)
         task_lines = self._extract_state_lines(state)
 
         parts: list[str] = []
         if recent_lines:
-            parts.append("共享近況：\n" + "\n".join(f"- {line}" for line in recent_lines[: self._config.context_limit]))
+            parts.append("共享近況：\n" + "\n".join(f"- {line}" for line in recent_lines[:context_limit]))
+        if deep_lines:
+            parts.append("更相關的過往脈絡：\n" + "\n".join(f"- {line}" for line in deep_lines[: self._config.deep_recall_limit]))
         if task_lines:
             parts.append("任務脈絡：\n" + "\n".join(f"- {line}" for line in task_lines[:6]))
         if fact_lines:
-            parts.append("相關背景：\n" + "\n".join(f"- {line}" for line in fact_lines[: self._config.ontology_limit]))
+            parts.append("相關背景：\n" + "\n".join(f"- {line}" for line in fact_lines[:ontology_limit]))
         if not parts:
             return ""
         parts.append("回覆時自然承接即可，不要提到背景來源、內部架構、系統名稱或本機服務資訊。")
@@ -352,6 +586,30 @@ class FsaXiaoxiMemoryProvider(MemoryProvider):
             content = _clean_text(item.get("content"), drop_sensitive=True)
             _append_line(lines, content)
         return lines
+
+    def _extract_deep_recall_lines(self, payload: Any) -> list[str]:
+        lines: list[str] = []
+        if not isinstance(payload, dict):
+            return lines
+        for item in payload.get("results") or []:
+            if not isinstance(item, dict):
+                continue
+            memory = item.get("memory")
+            if not isinstance(memory, dict) or not self._deep_memory_is_safe(memory):
+                continue
+            content = _clean_text(memory.get("content"), drop_sensitive=True)
+            _append_line(lines, content)
+        return lines
+
+    def _deep_memory_is_safe(self, memory: dict[str, Any]) -> bool:
+        memory_type = str(memory.get("memory_type") or "").lower()
+        if memory_type and memory_type not in _SAFE_DEEP_MEMORY_TYPES:
+            return False
+        source = str(memory.get("source") or "")
+        content = str(memory.get("content") or "")
+        if _SENSITIVE_LINE_RE.search(source) or _SENSITIVE_LINE_RE.search(content):
+            return False
+        return True
 
     def _extract_fact_lines(self, payload: Any) -> list[str]:
         lines: list[str] = []
