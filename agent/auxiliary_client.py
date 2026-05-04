@@ -159,6 +159,11 @@ _PROVIDER_ALIASES = {
     "tokenhub": "tencent-tokenhub",
     "tencent-cloud": "tencent-tokenhub",
     "tencentmaas": "tencent-tokenhub",
+    "flysuite": "flysuiteai",
+    "flysuite-ai": "flysuiteai",
+    "flysuite_ai": "flysuiteai",
+    "flysuiteai-proxy": "flysuiteai",
+    "fsa-ai": "flysuiteai",
 }
 
 
@@ -233,6 +238,7 @@ _API_KEY_PROVIDER_AUX_MODELS: Dict[str, str] = {
     "kilocode": "google/gemini-3-flash-preview",
     "ollama-cloud": "nemotron-3-nano:30b",
     "tencent-tokenhub": "hy3-preview",
+    "flysuiteai": "gpt-5.4-mini",
 }
 
 # Vision-specific model overrides for direct providers.
@@ -1167,7 +1173,10 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
 
                 extra["default_headers"] = copilot_default_headers()
             _client = OpenAI(api_key=api_key, base_url=base_url, **extra)
-            _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
+            if provider_id == "flysuiteai" or raw_base_url.rstrip("/").lower().endswith("/v1/codex"):
+                _client = CodexAuxiliaryClient(_client, model)
+            else:
+                _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
             return _client, model
 
         creds = resolve_api_key_provider_credentials(provider_id)
@@ -1194,7 +1203,10 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
 
             extra["default_headers"] = copilot_default_headers()
         _client = OpenAI(api_key=api_key, base_url=base_url, **extra)
-        _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
+        if provider_id == "flysuiteai" or raw_base_url.rstrip("/").lower().endswith("/v1/codex"):
+            _client = CodexAuxiliaryClient(_client, model)
+        else:
+            _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
         return _client, model
 
     return None, None
@@ -2053,6 +2065,8 @@ def resolve_provider_client(
         if raw_codex:
             return False
         if api_mode == "codex_responses":
+            return True
+        if provider == "flysuiteai" or str(base_url_str or "").rstrip("/").lower().endswith("/v1/codex"):
             return True
         # Auto-detect: api.openai.com + codex model name pattern
         if api_mode and api_mode != "codex_responses":

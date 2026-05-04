@@ -609,3 +609,71 @@ class TestHomeChannelEnvOverrides:
             home = config.platforms[platform].home_channel
             assert home is not None, f"{platform.value}: home_channel should not be None"
             assert (home.chat_id, home.name) == expected, platform.value
+
+
+class TestPluginPlatformEnvOverrides:
+    def test_plugin_auto_enable_uses_validate_config_not_required_env(self, monkeypatch):
+        from gateway.platform_registry import PlatformEntry, platform_registry
+
+        original = dict(platform_registry._entries)
+        platform_registry._entries.clear()
+        try:
+            platform_registry.register(
+                PlatformEntry(
+                    name="test-chat",
+                    label="Test Chat",
+                    adapter_factory=lambda cfg: object(),
+                    check_fn=lambda: True,
+                    validate_config=lambda cfg: bool(
+                        os.getenv("TEST_CHAT_SERVER") and os.getenv("TEST_CHAT_CHANNEL")
+                    ),
+                    required_env=["TEST_CHAT_SERVER", "TEST_CHAT_CHANNEL", "TEST_CHAT_NICKNAME"],
+                    source="plugin",
+                )
+            )
+            monkeypatch.setenv("TEST_CHAT_SERVER", "chat.example.net")
+            monkeypatch.setenv("TEST_CHAT_CHANNEL", "#ops")
+            monkeypatch.setenv("TEST_CHAT_HOME_CHANNEL", "#ops")
+            monkeypatch.setenv("TEST_CHAT_HOME_CHANNEL_NAME", "Ops")
+            monkeypatch.delenv("TEST_CHAT_NICKNAME", raising=False)
+
+            config = GatewayConfig()
+            with patch("hermes_cli.plugins.discover_plugins", lambda: None):
+                _apply_env_overrides(config)
+
+            platform = Platform("test-chat")
+            assert config.platforms[platform].enabled is True
+            assert config.platforms[platform].home_channel is not None
+            assert config.platforms[platform].home_channel.chat_id == "#ops"
+            assert config.platforms[platform].home_channel.name == "Ops"
+        finally:
+            platform_registry._entries.clear()
+            platform_registry._entries.update(original)
+
+    def test_plugin_auto_enable_skips_dependency_only_plugins_without_config(self):
+        from gateway.platform_registry import PlatformEntry, platform_registry
+
+        original = dict(platform_registry._entries)
+        platform_registry._entries.clear()
+        try:
+            platform_registry.register(
+                PlatformEntry(
+                    name="dep-only",
+                    label="Dependency Only",
+                    adapter_factory=lambda cfg: object(),
+                    check_fn=lambda: True,
+                    validate_config=lambda cfg: False,
+                    required_env=["DEP_ONLY_TOKEN"],
+                    source="plugin",
+                )
+            )
+
+            config = GatewayConfig()
+            with patch.dict(os.environ, {}, clear=True):
+                with patch("hermes_cli.plugins.discover_plugins", lambda: None):
+                    _apply_env_overrides(config)
+
+            assert Platform("dep-only") not in config.platforms
+        finally:
+            platform_registry._entries.clear()
+            platform_registry._entries.update(original)

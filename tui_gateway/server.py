@@ -1766,11 +1766,11 @@ def _reset_session_agent(sid: str, session: dict) -> dict:
 
 def _make_agent(sid: str, key: str, session_id: str | None = None):
     from run_agent import AIAgent
+    from hermes_cli.config import load_agent_system_prompt
     from hermes_cli.runtime_provider import resolve_runtime_provider
 
     cfg = _load_cfg()
-    agent_cfg = cfg.get("agent") or {}
-    system_prompt = (agent_cfg.get("system_prompt", "") or "").strip()
+    system_prompt = load_agent_system_prompt(cfg)
     model, requested_provider = _resolve_startup_runtime()
     runtime = resolve_runtime_provider(
         requested=requested_provider,
@@ -5135,7 +5135,9 @@ def _mirror_slash_side_effects(sid: str, session: dict, command: str) -> str:
             _apply_personality_to_session(sid, session, new_prompt)
         elif name == "prompt" and agent:
             cfg = _load_cfg()
-            new_prompt = (cfg.get("agent") or {}).get("system_prompt", "") or ""
+            from hermes_cli.config import load_agent_system_prompt
+
+            new_prompt = load_agent_system_prompt(cfg)
             agent.ephemeral_system_prompt = new_prompt or None
             agent._cached_system_prompt = None
         elif name == "compress" and agent:

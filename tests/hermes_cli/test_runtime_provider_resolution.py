@@ -150,6 +150,28 @@ def test_resolve_runtime_provider_codex(monkeypatch):
     assert resolved["requested_provider"] == "openai-codex"
 
 
+def test_resolve_runtime_provider_flysuiteai(monkeypatch):
+    monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "flysuiteai")
+    monkeypatch.setattr(
+        rp,
+        "resolve_api_key_provider_credentials",
+        lambda provider: {
+            "provider": provider,
+            "base_url": "http://127.0.0.1:8089/v1/codex",
+            "api_key": "sk-proxy-test-key",
+            "source": "FLYSUITEAI_API_KEY",
+        },
+    )
+
+    resolved = rp.resolve_runtime_provider(requested="flysuiteai")
+
+    assert resolved["provider"] == "flysuiteai"
+    assert resolved["api_mode"] == "codex_responses"
+    assert resolved["base_url"] == "http://127.0.0.1:8089/v1/codex"
+    assert resolved["api_key"] == "sk-proxy-test-key"
+    assert resolved["requested_provider"] == "flysuiteai"
+
+
 def test_resolve_runtime_provider_qwen_oauth(monkeypatch):
     monkeypatch.setattr(rp, "resolve_provider", lambda *a, **k: "qwen-oauth")
     monkeypatch.setattr(

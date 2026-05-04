@@ -108,6 +108,16 @@ def _codex_curated_models() -> list[str]:
     return _add_forward_compat_models(list(DEFAULT_CODEX_MODELS))
 
 
+FLYSUITEAI_CODEX_MODELS: list[str] = [
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex",
+    "gpt-5.3-codex-spark",
+    "gpt-5.2",
+]
+
+
 # Static fallback for xAI when the models.dev disk cache is empty (fresh
 # install, offline first run, etc.). Mirrors the xAI-direct model IDs from
 # $HERMES_HOME/models_dev_cache.json as of 2026-04-28. Whenever xAI renames
@@ -199,6 +209,7 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "gpt-4o-mini",
     ],
     "openai-codex": _codex_curated_models(),
+    "flysuiteai": FLYSUITEAI_CODEX_MODELS,
     "copilot-acp": [
         "copilot-acp",
     ],
@@ -776,6 +787,7 @@ CANONICAL_PROVIDERS: list[ProviderEntry] = [
     ProviderEntry("lmstudio",       "LM Studio",                "LM Studio (local desktop app with built-in model server)"),
     ProviderEntry("anthropic",      "Anthropic",                "Anthropic (Claude models — API key or Claude Code)"),
     ProviderEntry("openai-codex",   "OpenAI Codex",             "OpenAI Codex"),
+    ProviderEntry("flysuiteai",     "FlySuiteAI",               "FlySuiteAI local Codex proxy (/v1/codex)"),
     ProviderEntry("xiaomi",         "Xiaomi MiMo",              "Xiaomi MiMo (MiMo-V2.5 and V2 models — pro, omni, flash)"),
     ProviderEntry("tencent-tokenhub", "Tencent TokenHub",       "Tencent TokenHub (Hy3 Preview — direct API via tokenhub.tencentmaas.com)"),
     ProviderEntry("nvidia",         "NVIDIA NIM",               "NVIDIA NIM (Nemotron models — build.nvidia.com or local NIM)"),
@@ -876,6 +888,11 @@ _PROVIDER_ALIASES = {
     "grok": "xai",
     "x-ai": "xai",
     "x.ai": "xai",
+    "flysuite": "flysuiteai",
+    "flysuite-ai": "flysuiteai",
+    "flysuite_ai": "flysuiteai",
+    "flysuiteai-proxy": "flysuiteai",
+    "fsa-ai": "flysuiteai",
     "nim": "nvidia",
     "nvidia-nim": "nvidia",
     "build-nvidia": "nvidia",
@@ -1930,6 +1947,19 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
         except Exception:
             access_token = None
         return get_codex_model_ids(access_token=access_token)
+    if normalized == "flysuiteai":
+        try:
+            from hermes_cli.auth import resolve_api_key_provider_credentials
+
+            creds = resolve_api_key_provider_credentials("flysuiteai")
+            api_key = str(creds.get("api_key") or "").strip()
+            base_url = str(creds.get("base_url") or "").strip()
+            if api_key and base_url:
+                live = fetch_api_models(api_key, base_url)
+                if live:
+                    return live
+        except Exception:
+            pass
     if normalized in {"copilot", "copilot-acp"}:
         try:
             live = _fetch_github_models(_resolve_copilot_catalog_api_key())

@@ -214,12 +214,20 @@ async def test_run_agent_appends_channel_prompt_to_ephemeral_system_prompt(monke
     _install_fake_agent(monkeypatch)
     runner = _make_runner()
 
-    (tmp_path / "config.yaml").write_text("agent:\n  system_prompt: Global prompt\n", encoding="utf-8")
+    (tmp_path / "persona.md").write_text("Private prompt", encoding="utf-8")
+    (tmp_path / "config.yaml").write_text(
+        "agent:\n"
+        "  system_prompt: Global prompt\n"
+        "  system_prompt_files:\n"
+        "    - persona.md\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(gateway_run, "_hermes_home", tmp_path)
     monkeypatch.setattr(gateway_run, "_env_path", tmp_path / ".env")
     monkeypatch.setattr(gateway_run, "load_dotenv", lambda *args, **kwargs: None)
     monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
     monkeypatch.setattr(gateway_run, "_resolve_gateway_model", lambda config=None: "gpt-5.4")
+    runner._ephemeral_system_prompt = gateway_run.GatewayRunner._load_ephemeral_system_prompt()
     monkeypatch.setattr(
         gateway_run,
         "_resolve_runtime_agent_kwargs",
@@ -254,5 +262,5 @@ async def test_run_agent_appends_channel_prompt_to_ephemeral_system_prompt(monke
 
     assert result["final_response"] == "ok"
     assert _CapturingAgent.last_init["ephemeral_system_prompt"] == (
-        "Context prompt\n\nChannel prompt\n\nGlobal prompt"
+        "Context prompt\n\nChannel prompt\n\nGlobal prompt\n\nPrivate prompt"
     )

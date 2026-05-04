@@ -39,7 +39,7 @@ from typing import Dict, Optional, Any, List, Union
 # gateway is a long-running daemon, so its boot cost matters less than
 # preserving the established test-patch surface.
 from agent.account_usage import fetch_account_usage, render_account_usage_lines
-from hermes_cli.config import cfg_get
+from hermes_cli.config import cfg_get, load_agent_system_prompt
 
 # --- Agent cache tuning ---------------------------------------------------
 # Bounds the per-session AIAgent cache to prevent unbounded growth in
@@ -2032,7 +2032,7 @@ class GatewayRunner:
         """Load ephemeral system prompt from config or env var.
         
         Checks HERMES_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
-        agent.system_prompt in ~/.hermes/config.yaml.
+        agent.system_prompt and agent.system_prompt_files in ~/.hermes/config.yaml.
         """
         prompt = os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "")
         if prompt:
@@ -2043,7 +2043,12 @@ class GatewayRunner:
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
-                return (cfg_get(cfg, "agent", "system_prompt", default="") or "").strip()
+                return load_agent_system_prompt(
+                    cfg,
+                    env_prompt="",
+                    base_dir=_hermes_home,
+                    log=logger,
+                )
         except Exception:
             pass
         return ""
@@ -8254,7 +8259,12 @@ class GatewayRunner:
                 atomic_yaml_write(config_path, config)
             except Exception as e:
                 return f"⚠️ Failed to save personality change: {e}"
-            self._ephemeral_system_prompt = ""
+            self._ephemeral_system_prompt = load_agent_system_prompt(
+                config,
+                env_prompt="",
+                base_dir=_hermes_home,
+                log=logger,
+            )
             return "🎭 Personality cleared — using base agent behavior.\n_(takes effect on next message)_"
         elif args in personalities:
             new_prompt = _resolve_prompt(personalities[args])
@@ -8269,7 +8279,12 @@ class GatewayRunner:
                 return f"⚠️ Failed to save personality change: {e}"
 
             # Update in-memory so it takes effect on the very next message.
-            self._ephemeral_system_prompt = new_prompt
+            self._ephemeral_system_prompt = load_agent_system_prompt(
+                config,
+                env_prompt="",
+                base_dir=_hermes_home,
+                log=logger,
+            )
 
             return f"🎭 Personality set to **{args}**\n_(takes effect on next message)_"
 

@@ -201,6 +201,22 @@ class TestPrimaryClientWiring:
             headers = mock_openai.call_args.kwargs.get("default_headers") or {}
             assert headers.get("originator") != "codex_cli_rs"
 
+    def test_flysuiteai_base_url_does_not_get_chatgpt_headers(self):
+        from run_agent import AIAgent
+        with patch("run_agent.OpenAI") as mock_openai:
+            mock_openai.return_value = MagicMock()
+            AIAgent(
+                api_key="sk-proxy-test-key",
+                base_url="http://127.0.0.1:8089/v1/codex",
+                provider="flysuiteai",
+                model="gpt-5.4-mini",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+            headers = mock_openai.call_args.kwargs.get("default_headers") or {}
+            assert headers.get("originator") != "codex_cli_rs"
+
 
 # ---------------------------------------------------------------------------
 # Auxiliary client wiring (agent.auxiliary_client)

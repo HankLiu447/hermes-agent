@@ -210,6 +210,56 @@ def test_oneshot_rejects_invalid_only_toolsets(monkeypatch, capsys):
     assert "did not contain any valid toolsets" in err
 
 
+def test_oneshot_passes_system_prompt_files(monkeypatch, tmp_path):
+    prompt_file = tmp_path / "persona.md"
+    prompt_file.write_text("private persona", encoding="utf-8")
+    captured = {}
+
+    class FakeAgent:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def chat(self, prompt):
+            return "ok"
+
+    fake_run_agent = types.ModuleType("run_agent")
+    fake_run_agent.AIAgent = FakeAgent
+    monkeypatch.setitem(sys.modules, "run_agent", fake_run_agent)
+
+    import hermes_cli.config as config_mod
+    import hermes_cli.runtime_provider as runtime_provider
+    import hermes_cli.tools_config as tools_config
+
+    monkeypatch.setattr(
+        config_mod,
+        "load_config",
+        lambda: {
+            "model": {"default": "gpt-5.4"},
+            "agent": {
+                "system_prompt": "base prompt",
+                "system_prompt_files": [str(prompt_file)],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        runtime_provider,
+        "resolve_runtime_provider",
+        lambda **kwargs: {
+            "provider": "openrouter",
+            "base_url": "https://api.synthetic.new/v1",
+            "api_key": "sk-test",
+            "api_mode": "chat_completions",
+            "credential_pool": None,
+        },
+    )
+    monkeypatch.setattr(tools_config, "_get_platform_tools", lambda cfg, platform: set())
+
+    from hermes_cli.oneshot import _run_agent
+
+    assert _run_agent("hello", use_config_toolsets=True) == "ok"
+    assert captured["ephemeral_system_prompt"] == "base prompt\n\nprivate persona"
+
+
 def test_oneshot_filters_invalid_toolsets_before_redirect(monkeypatch, capsys):
     _stub_plugin_discovery(monkeypatch)
     from hermes_cli.oneshot import _validate_explicit_toolsets

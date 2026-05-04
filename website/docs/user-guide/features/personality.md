@@ -10,6 +10,7 @@ Hermes Agent's personality is fully customizable. `SOUL.md` is the **primary ide
 
 - `SOUL.md` — a durable persona file that lives in `HERMES_HOME` and serves as the agent's identity (slot #1 in the system prompt)
 - built-in or custom `/personality` presets — session-level system-prompt overlays
+- `agent.system_prompt_files` — private prompt fragments loaded from files outside git
 
 If you want to change who Hermes is — or replace it with an entirely different agent persona — edit `SOUL.md`.
 
@@ -227,13 +228,27 @@ Then switch to it with:
 /personality codereviewer
 ```
 
+## Private prompt files
+
+For persona material that should stay out of config files and git history, add local prompt fragments under `agent.system_prompt_files`:
+
+```yaml
+agent:
+  system_prompt_files:
+    - persona/xiaoxi/system-prompt.md
+    - ~/private/hermes-extra-context.md
+```
+
+Relative paths resolve from `HERMES_HOME`, so `persona/xiaoxi/system-prompt.md` points to `~/.hermes/persona/xiaoxi/system-prompt.md` by default. Hermes appends these files after `agent.system_prompt` for CLI, TUI, and gateway sessions. `HERMES_EPHEMERAL_SYSTEM_PROMPT` still takes precedence and overrides both config and files.
+
 ## Recommended workflow
 
 A strong default setup is:
 
 1. Keep a thoughtful global `SOUL.md` in `~/.hermes/SOUL.md`
-2. Put project instructions in `AGENTS.md`
-3. Use `/personality` only when you want a temporary mode shift
+2. Put private long-form persona overlays in `agent.system_prompt_files`
+3. Put project instructions in `AGENTS.md`
+4. Use `/personality` only when you want a temporary mode shift
 
 That gives you:
 - a stable voice
@@ -250,7 +265,7 @@ At a high level, the prompt stack includes:
 5. context files (`AGENTS.md`, `.cursorrules`)
 6. timestamp
 7. platform-specific formatting hints
-8. optional system-prompt overlays such as `/personality`
+8. optional system-prompt overlays such as `/personality` and `agent.system_prompt_files`
 
 `SOUL.md` is the foundation — everything else builds on top of it.
 
@@ -265,7 +280,7 @@ At a high level, the prompt stack includes:
 
 Conversational personality and CLI appearance are separate:
 
-- `SOUL.md`, `agent.system_prompt`, and `/personality` affect how Hermes speaks
+- `SOUL.md`, `agent.system_prompt`, `agent.system_prompt_files`, and `/personality` affect how Hermes speaks
 - `display.skin` and `/skin` affect how Hermes looks in the terminal
 
 For terminal appearance, see [Skins & Themes](./skins.md).

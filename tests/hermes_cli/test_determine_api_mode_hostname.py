@@ -22,6 +22,9 @@ class TestOpenAIHostHardening:
     def test_openai_path_segment_is_not_codex(self):
         assert determine_api_mode("", "https://proxy.example.test/api.openai.com/v1") == "chat_completions"
 
+    def test_flysuiteai_codex_path_is_codex(self):
+        assert determine_api_mode("", "http://127.0.0.1:8089/v1/codex") == "codex_responses"
+
 
 class TestAnthropicHostHardening:
     def test_native_anthropic_url_is_anthropic_messages(self):

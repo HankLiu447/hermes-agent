@@ -457,6 +457,16 @@ class TestBuildApiKwargsCodex:
         kwargs = agent._build_api_kwargs(messages)
         assert "max_output_tokens" not in kwargs
 
+    def test_omits_max_output_tokens_for_flysuiteai_codex_backend(self, monkeypatch):
+        agent = _make_agent(monkeypatch, "flysuiteai", api_mode="codex_responses",
+                            base_url="http://127.0.0.1:8089/v1/codex")
+        agent.model = "gpt-5.4-mini"
+        agent.max_tokens = 20
+        messages = [{"role": "user", "content": "hi"}]
+        kwargs = agent._build_api_kwargs(messages)
+        assert "max_output_tokens" not in kwargs
+        assert kwargs.get("store") is False
+
     def test_includes_encrypted_content_in_include(self, monkeypatch):
         agent = _make_agent(monkeypatch, "openai-codex", api_mode="codex_responses",
                             base_url="https://chatgpt.com/backend-api/codex")

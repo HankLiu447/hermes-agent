@@ -72,6 +72,7 @@ DEFAULT_AGENT_KEY_MIN_TTL_SECONDS = 30 * 60  # 30 minutes
 ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 120       # refresh 2 min before expiry
 DEVICE_AUTH_POLL_INTERVAL_CAP_SECONDS = 1     # poll at most every 1s
 DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
+DEFAULT_FLYSUITEAI_BASE_URL = "http://127.0.0.1:8089/v1/codex"
 MINIMAX_OAUTH_CLIENT_ID = "78257093-7e40-4613-99e0-527b14b39113"
 MINIMAX_OAUTH_SCOPE = "group_id profile model.completion"
 MINIMAX_OAUTH_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:user_code"
@@ -161,6 +162,14 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         name="OpenAI Codex",
         auth_type="oauth_external",
         inference_base_url=DEFAULT_CODEX_BASE_URL,
+    ),
+    "flysuiteai": ProviderConfig(
+        id="flysuiteai",
+        name="FlySuiteAI",
+        auth_type="api_key",
+        inference_base_url=DEFAULT_FLYSUITEAI_BASE_URL,
+        api_key_env_vars=("FLYSUITEAI_API_KEY", "FLYSUITE_AI_API_KEY"),
+        base_url_env_var="FLYSUITEAI_BASE_URL",
     ),
     "qwen-oauth": ProviderConfig(
         id="qwen-oauth",
@@ -1164,6 +1173,8 @@ def resolve_provider(
     # Normalize provider aliases
     _PROVIDER_ALIASES = {
         "glm": "zai", "z-ai": "zai", "z.ai": "zai", "zhipu": "zai",
+        "flysuite": "flysuiteai", "flysuite-ai": "flysuiteai", "flysuite_ai": "flysuiteai",
+        "flysuiteai-proxy": "flysuiteai", "fsa-ai": "flysuiteai",
         "google": "gemini", "google-gemini": "gemini", "google-ai-studio": "gemini",
         "x-ai": "xai", "x.ai": "xai", "grok": "xai",
         "kimi": "kimi-coding", "kimi-for-coding": "kimi-coding", "moonshot": "kimi-coding",
@@ -3638,6 +3649,8 @@ def get_api_key_provider_status(provider_id: str) -> Dict[str, Any]:
     env_url = ""
     if pconfig.base_url_env_var:
         env_url = os.getenv(pconfig.base_url_env_var, "").strip()
+    if not env_url and provider_id == "flysuiteai":
+        env_url = os.getenv("FLYSUITE_AI_BASE_URL", "").strip()
 
     if provider_id in ("kimi-coding", "kimi-coding-cn"):
         base_url = _resolve_kimi_base_url(api_key, pconfig.inference_base_url, env_url)
@@ -3742,6 +3755,8 @@ def resolve_api_key_provider_credentials(provider_id: str) -> Dict[str, Any]:
     env_url = ""
     if pconfig.base_url_env_var:
         env_url = os.getenv(pconfig.base_url_env_var, "").strip()
+    if not env_url and provider_id == "flysuiteai":
+        env_url = os.getenv("FLYSUITE_AI_BASE_URL", "").strip()
 
     if provider_id in ("kimi-coding", "kimi-coding-cn"):
         base_url = _resolve_kimi_base_url(api_key, pconfig.inference_base_url, env_url)
