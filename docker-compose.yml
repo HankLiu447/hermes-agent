@@ -27,6 +27,8 @@ services:
     network_mode: host
     volumes:
       - ~/.hermes:/opt/data
+      # Local FlySuiteFOS graph MCP source, mounted read-only for stdio MCP.
+      - ${FLYSUITE_FOS_GRAPH_PATH:-/Users/hank-agent/FlySuite/FlySuiteFOSGraph}:${FLYSUITE_FOS_GRAPH_PATH:-/Users/hank-agent/FlySuite/FlySuiteFOSGraph}:ro
     environment:
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
