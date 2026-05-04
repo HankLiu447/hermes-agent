@@ -2590,7 +2590,7 @@ class AIAgent:
         detail = (detail or exc.__class__.__name__).strip()
         if len(detail) > 220:
             detail = detail[:217].rstrip() + "..."
-        self._emit_warning(f"⚠ Auxiliary {task} failed: {detail}")
+        self._emit_warning(f"⚠ 輔助工作 {task} 失敗：{detail}")
 
     def _current_main_runtime(self) -> Dict[str, str]:
         """Return the live main runtime for session-scoped auxiliary routing."""
@@ -2642,9 +2642,8 @@ class AIAgent:
                 _aux_cfg_provider = ""
             if client is None or not aux_model:
                 msg = (
-                    "⚠ No auxiliary LLM provider configured — context "
-                    "compression will drop middle turns without a summary. "
-                    "Run `hermes setup` or set OPENROUTER_API_KEY."
+                    "⚠ 尚未設定輔助 LLM 供應方；上下文壓縮會移除中段對話，"
+                    "但無法產生摘要。請執行 `hermes setup`，或設定 OPENROUTER_API_KEY。"
                 )
                 self._compression_warning = msg
                 self._emit_status(msg)
@@ -2733,18 +2732,18 @@ class AIAgent:
                 )
                 _aux_label = f"{aux_model} ({_aux_provider_label})"
                 msg = (
-                    f"⚠ Compression model {_aux_label} context is "
-                    f"{aux_context:,} tokens, but the main model "
-                    f"{_main_label}'s compression threshold was "
-                    f"{old_threshold:,} tokens. "
-                    f"Auto-lowered this session's threshold to "
-                    f"{new_threshold:,} tokens so compression can run.\n"
-                    f"  To make this permanent, edit config.yaml — either:\n"
-                    f"  1. Use a larger compression model:\n"
+                    f"⚠ 壓縮模型 {_aux_label} 的上下文是 "
+                    f"{aux_context:,} tokens，但主要模型 "
+                    f"{_main_label} 的壓縮門檻原本是 "
+                    f"{old_threshold:,} tokens。"
+                    f"已將本工作階段的門檻自動降到 "
+                    f"{new_threshold:,} tokens，讓壓縮可以執行。\n"
+                    f"  若要永久套用，請修改 config.yaml，二選一：\n"
+                    f"  1. 使用更大的壓縮模型：\n"
                     f"       auxiliary:\n"
                     f"         compression:\n"
                     f"           model: <model-with-{old_threshold:,}+-context>\n"
-                    f"  2. Lower the compression threshold:\n"
+                    f"  2. 降低壓縮門檻：\n"
                     f"       compression:\n"
                     f"         threshold: 0.{safe_pct:02d}"
                 )
@@ -6497,9 +6496,9 @@ class AIAgent:
                     api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
                 )
                 self._emit_status(
-                    f"⚠️ No response from provider for {int(_elapsed)}s "
-                    f"(non-streaming, model: {api_kwargs.get('model', 'unknown')}). "
-                    f"Aborting call."
+                    f"⚠️ 供應方已 {int(_elapsed)} 秒沒有回應"
+                    f"（非串流，模型：{api_kwargs.get('model', 'unknown')}）。"
+                    f"正在中止這次呼叫。"
                 )
                 try:
                     if self.api_mode == "anthropic_messages":
@@ -7228,9 +7227,9 @@ class AIAgent:
                             deltas_were_sent["yes"] = False
                             first_delta_fired["done"] = False
                             self._emit_status(
-                                f"⚠️ Connection dropped mid tool-call "
-                                f"({type(e).__name__}). Reconnecting… "
-                                f"(attempt {_stream_attempt + 2}/{_max_stream_retries + 1})"
+                                f"⚠️ 工具呼叫途中連線中斷"
+                                f"（{type(e).__name__}）。正在重新連線..."
+                                f"（第 {_stream_attempt + 2}/{_max_stream_retries + 1} 次）"
                             )
                             self._touch_activity(
                                 f"stream retry {_stream_attempt + 2}/{_max_stream_retries + 1} "
@@ -7248,7 +7247,7 @@ class AIAgent:
                                 )
                             except Exception:
                                 pass
-                            self._emit_status("🔄 Reconnected — resuming…")
+                            self._emit_status("🔄 已重新連線，正在繼續...")
                             continue
 
                         # SSE error events from proxies (e.g. OpenRouter sends
@@ -7294,9 +7293,9 @@ class AIAgent:
                                     e,
                                 )
                                 self._emit_status(
-                                    f"⚠️ Connection to provider dropped "
-                                    f"({type(e).__name__}). Reconnecting… "
-                                    f"(attempt {_stream_attempt + 2}/{_max_stream_retries + 1})"
+                                    f"⚠️ 與供應方的連線中斷"
+                                    f"（{type(e).__name__}）。正在重新連線..."
+                                    f"（第 {_stream_attempt + 2}/{_max_stream_retries + 1} 次）"
                                 )
                                 self._touch_activity(
                                     f"stream retry {_stream_attempt + 2}/{_max_stream_retries + 1} "
@@ -7317,13 +7316,12 @@ class AIAgent:
                                     )
                                 except Exception:
                                     pass
-                                self._emit_status("🔄 Reconnected — resuming…")
+                                self._emit_status("🔄 已重新連線，正在繼續...")
                                 continue
                             self._emit_status(
-                                "❌ Connection to provider failed after "
-                                f"{_max_stream_retries + 1} attempts. "
-                                "The provider may be experiencing issues — "
-                                "try again in a moment."
+                                "❌ 與供應方連線失敗，已重試 "
+                                f"{_max_stream_retries + 1} 次。"
+                                "供應方可能暫時異常，請稍後再試。"
                             )
                             logger.warning(
                                 "Streaming exhausted %s retries on transient error: %s",
@@ -7424,10 +7422,10 @@ class AIAgent:
                     api_kwargs.get("model", "unknown"), f"{_est_ctx:,}",
                 )
                 self._emit_status(
-                    f"⚠️ No response from provider for {int(_stale_elapsed)}s "
-                    f"(model: {api_kwargs.get('model', 'unknown')}, "
-                    f"context: ~{_est_ctx:,} tokens). "
-                    f"Reconnecting..."
+                    f"⚠️ 供應方已 {int(_stale_elapsed)} 秒沒有回應"
+                    f"（模型：{api_kwargs.get('model', 'unknown')}，"
+                    f"上下文：約 {_est_ctx:,} tokens）。"
+                    f"正在重新連線..."
                 )
                 try:
                     rc = request_client_holder.get("client")
@@ -7713,7 +7711,7 @@ class AIAgent:
                 )
 
             self._emit_status(
-                f"🔄 Primary model failed — switching to fallback: "
+                f"🔄 主要模型失敗，正在切換備援："
                 f"{fb_model} via {fb_provider}"
             )
             logging.info(
@@ -9119,8 +9117,8 @@ class AIAgent:
             if getattr(self, "_last_compression_summary_warning", None) != summary_error:
                 self._last_compression_summary_warning = summary_error
                 self._emit_warning(
-                    f"⚠ Compression summary failed: {summary_error}. "
-                    "Inserted a fallback context marker."
+                    f"⚠ 壓縮摘要失敗：{summary_error}。"
+                    "已插入備援脈絡標記。"
                 )
         else:
             # No hard failure — but did the configured aux model error out
@@ -9135,9 +9133,9 @@ class AIAgent:
                 if getattr(self, "_last_aux_fallback_warning_key", None) != _aux_key:
                     self._last_aux_fallback_warning_key = _aux_key
                     self._emit_warning(
-                        f"ℹ Configured compression model '{_aux_fail_model}' failed "
-                        f"({_aux_fail_err or 'unknown error'}). Recovered using main model — "
-                        "check auxiliary.compression.model in config.yaml."
+                        f"ℹ 目前設定的壓縮模型 `{_aux_fail_model}` 失敗"
+                        f"（{_aux_fail_err or 'unknown error'}）。已改用主要模型完成恢復；"
+                        "請檢查 config.yaml 裡的 auxiliary.compression.model。"
                     )
 
         todo_snapshot = self._todo_store.format_for_injection()
@@ -10529,9 +10527,8 @@ class AIAgent:
             try:
                 if self._cleanup_dead_connections():
                     self._emit_status(
-                        "🔌 Detected stale connections from a previous provider "
-                        "issue — cleaned up automatically. Proceeding with fresh "
-                        "connection."
+                        "🔌 偵測到先前供應方異常留下的失效連線，"
+                        "已自動清理，接下來會使用新的連線。"
                     )
             except Exception:
                 pass
@@ -10604,7 +10601,7 @@ class AIAgent:
         
         if not self.quiet_mode:
             _print_preview = _summarize_user_message_for_log(user_message)
-            self._safe_print(f"💬 Starting conversation: '{_print_preview[:60]}{'...' if len(_print_preview) > 60 else ''}'")
+            self._safe_print(f"💬 開始對話：'{_print_preview[:60]}{'...' if len(_print_preview) > 60 else ''}'")
         
         # ── System prompt (cached per session for prefix caching) ──
         # Built once on first call, reused for all subsequent calls.
@@ -10687,9 +10684,9 @@ class AIAgent:
                     f"{self.context_compressor.context_length:,}",
                 )
                 self._emit_status(
-                    f"📦 Preflight compression: ~{_preflight_tokens:,} tokens "
-                    f">= {self.context_compressor.threshold_tokens:,} threshold. "
-                    "This may take a moment."
+                    f"📦 進入模型前先壓縮脈絡：~{_preflight_tokens:,} tokens "
+                    f">= {self.context_compressor.threshold_tokens:,} 門檻。"
+                    "這可能需要一點時間。"
                 )
                 # May need multiple passes for very large sessions with small
                 # context windows (each pass summarises the middle N turns).
@@ -10821,7 +10818,7 @@ class AIAgent:
                 interrupted = True
                 _turn_exit_reason = "interrupted_by_user"
                 if not self.quiet_mode:
-                    self._safe_print("\n⚡ Breaking out of tool loop due to interrupt...")
+                    self._safe_print("\n⚡ 收到中斷要求，正在離開工具迴圈...")
                 break
             
             api_call_count += 1
@@ -10836,7 +10833,7 @@ class AIAgent:
             elif not self.iteration_budget.consume():
                 _turn_exit_reason = "budget_exhausted"
                 if not self.quiet_mode:
-                    self._safe_print(f"\n⚠️  Iteration budget exhausted ({self.iteration_budget.used}/{self.iteration_budget.max_total} iterations used)")
+                    self._safe_print(f"\n⚠️  已用完執行輪數預算（已使用 {self.iteration_budget.used}/{self.iteration_budget.max_total} 輪）")
                 break
 
             # Fire step_callback for gateway hooks (agent:step event)
@@ -11143,8 +11140,8 @@ class AIAgent:
                         _nous_remaining = nous_rate_limit_remaining()
                         if _nous_remaining is not None and _nous_remaining > 0:
                             _nous_msg = (
-                                f"Nous Portal rate limit active — "
-                                f"resets in {_fmt_nous_remaining(_nous_remaining)}."
+                                f"Nous Portal 目前仍在速率限制中，"
+                                f"約 {_fmt_nous_remaining(_nous_remaining)} 後重置。"
                             )
                             self._vprint(
                                 f"{self.log_prefix}⏳ {_nous_msg} Trying fallback...",
@@ -11161,9 +11158,8 @@ class AIAgent:
                             return {
                                 "final_response": (
                                     f"⏳ {_nous_msg}\n\n"
-                                    "No fallback provider available. "
-                                    "Try again after the reset, or add a "
-                                    "fallback provider in config.yaml."
+                                    "目前沒有可用的備援供應方。"
+                                    "請等限制重置後再試，或在 config.yaml 加上備援供應方。"
                                 ),
                                 "messages": messages,
                                 "api_calls": api_call_count,
@@ -11372,7 +11368,7 @@ class AIAgent:
                         # rate-limit symptom.  Switch to fallback immediately
                         # rather than retrying with extended backoff.
                         if self._fallback_index < len(self._fallback_chain):
-                            self._emit_status("⚠️ Empty/malformed response — switching to fallback...")
+                            self._emit_status("⚠️ 回覆為空或格式異常，正在切換備援...")
                         if self._try_activate_fallback():
                             retry_count = 0
                             compression_attempts = 0
@@ -11442,13 +11438,13 @@ class AIAgent:
                         
                         if retry_count >= max_retries:
                             # Try fallback before giving up
-                            self._emit_status(f"⚠️ Max retries ({max_retries}) for invalid responses — trying fallback...")
+                            self._emit_status(f"⚠️ 異常回覆已達最大重試次數（{max_retries}），正在嘗試備援...")
                             if self._try_activate_fallback():
                                 retry_count = 0
                                 compression_attempts = 0
                                 primary_recovery_attempted = False
                                 continue
-                            self._emit_status(f"❌ Max retries ({max_retries}) exceeded for invalid responses. Giving up.")
+                            self._emit_status(f"❌ 異常回覆已超過最大重試次數（{max_retries}），停止本輪。")
                             logging.error(f"{self.log_prefix}Invalid API response after {max_retries} retries.")
                             self._persist_session(messages, conversation_history)
                             return {
@@ -11461,7 +11457,7 @@ class AIAgent:
                         
                         # Backoff before retry — jittered exponential: 5s base, 120s cap
                         wait_time = jittered_backoff(retry_count, base_delay=5.0, max_delay=120.0)
-                        self._vprint(f"{self.log_prefix}⏳ Retrying in {wait_time:.1f}s ({_failure_hint})...", force=True)
+                        self._vprint(f"{self.log_prefix}⏳ {wait_time:.1f} 秒後重試（{_failure_hint}）...", force=True)
                         logging.warning(f"Invalid API response (retry {retry_count}/{max_retries}): {', '.join(error_details)} | Provider: {provider_name}")
                         
                         # Sleep in small increments to stay responsive to interrupts
@@ -11909,12 +11905,12 @@ class AIAgent:
                             self._unicode_sanitization_passes += 1
                             if _surrogates_found:
                                 self._vprint(
-                                    f"{self.log_prefix}⚠️  Stripped invalid surrogate characters from messages. Retrying...",
+                                    f"{self.log_prefix}⚠️  已移除訊息中的無效 surrogate 字元，正在重試...",
                                     force=True,
                                 )
                             else:
                                 self._vprint(
-                                    f"{self.log_prefix}⚠️  Surrogate encoding error — retrying after full-payload sanitization...",
+                                    f"{self.log_prefix}⚠️  surrogate 編碼錯誤，已清理完整 payload 後重試...",
                                     force=True,
                                 )
                             continue
@@ -12336,8 +12332,8 @@ class AIAgent:
                             conversation_history = None
                             if len(messages) < original_len or old_ctx > _reduced_ctx:
                                 self._emit_status(
-                                    f"🗜️ Context reduced to {_reduced_ctx:,} tokens "
-                                    f"(was {old_ctx:,}), retrying..."
+                                    f"🗜️ 上下文已降到 {_reduced_ctx:,} tokens"
+                                    f"（原本 {old_ctx:,}），正在重試..."
                                 )
                                 time.sleep(2)
                                 restart_with_compressed_messages = True
@@ -12361,7 +12357,7 @@ class AIAgent:
                             self._credential_pool
                         )
                         if not pool_may_recover:
-                            self._emit_status("⚠️ Rate limited — switching to fallback provider...")
+                            self._emit_status("⚠️ 目前受到速率限制，正在切換備援供應方...")
                             if self._try_activate_fallback(reason=classified.reason):
                                 retry_count = 0
                                 compression_attempts = 0
@@ -12453,7 +12449,7 @@ class AIAgent:
                                 "failed": True,
                                 "compression_exhausted": True,
                             }
-                        self._emit_status(f"⚠️  Request payload too large (413) — compression attempt {compression_attempts}/{max_compression_attempts}...")
+                        self._emit_status(f"⚠️ 請求內容過大（413），正在壓縮（第 {compression_attempts}/{max_compression_attempts} 次）...")
 
                         original_len = len(messages)
                         messages, active_system_prompt = self._compress_context(
@@ -12466,7 +12462,7 @@ class AIAgent:
                         conversation_history = None
 
                         if len(messages) < original_len:
-                            self._emit_status(f"🗜️ Compressed {original_len} → {len(messages)} messages, retrying...")
+                            self._emit_status(f"🗜️ 已壓縮 {original_len} → {len(messages)} 則訊息，正在重試...")
                             time.sleep(2)  # Brief pause between compression retries
                             restart_with_compressed_messages = True
                             break
@@ -12610,7 +12606,7 @@ class AIAgent:
                                 "failed": True,
                                 "compression_exhausted": True,
                             }
-                        self._emit_status(f"🗜️ Context too large (~{approx_tokens:,} tokens) — compressing ({compression_attempts}/{max_compression_attempts})...")
+                        self._emit_status(f"🗜️ 上下文過大（約 {approx_tokens:,} tokens），正在壓縮（第 {compression_attempts}/{max_compression_attempts} 次）...")
 
                         original_len = len(messages)
                         messages, active_system_prompt = self._compress_context(
@@ -12624,7 +12620,7 @@ class AIAgent:
 
                         if len(messages) < original_len or new_ctx and new_ctx < old_ctx:
                             if len(messages) < original_len:
-                                self._emit_status(f"🗜️ Compressed {original_len} → {len(messages)} messages, retrying...")
+                                self._emit_status(f"🗜️ 已壓縮 {original_len} → {len(messages)} 則訊息，正在重試...")
                             time.sleep(2)  # Brief pause between compression retries
                             restart_with_compressed_messages = True
                             break
@@ -12689,7 +12685,7 @@ class AIAgent:
                     if is_client_error:
                         # Try fallback before aborting — a different provider
                         # may not have the same issue (rate limit, auth, etc.)
-                        self._emit_status(f"⚠️ Non-retryable error (HTTP {status_code}) — trying fallback...")
+                        self._emit_status(f"⚠️ 發生不可重試錯誤（HTTP {status_code}），正在嘗試備援...")
                         if self._try_activate_fallback():
                             retry_count = 0
                             compression_attempts = 0
@@ -12700,7 +12696,7 @@ class AIAgent:
                                 api_kwargs, reason="non_retryable_client_error", error=api_error,
                             )
                         self._emit_status(
-                            f"❌ Non-retryable error (HTTP {status_code}): "
+                            f"❌ 發生不可重試錯誤（HTTP {status_code}）："
                             f"{self._summarize_api_error(api_error)}"
                         )
                         self._vprint(f"{self.log_prefix}❌ Non-retryable client error (HTTP {status_code}). Aborting.", force=True)
@@ -12756,7 +12752,7 @@ class AIAgent:
                             retry_count = 0
                             continue
                         # Try fallback before giving up entirely
-                        self._emit_status(f"⚠️ Max retries ({max_retries}) exhausted — trying fallback...")
+                        self._emit_status(f"⚠️ 已用完最大重試次數（{max_retries}），正在嘗試備援...")
                         if self._try_activate_fallback():
                             retry_count = 0
                             compression_attempts = 0
@@ -12764,9 +12760,9 @@ class AIAgent:
                             continue
                         _final_summary = self._summarize_api_error(api_error)
                         if is_rate_limited:
-                            self._emit_status(f"❌ Rate limited after {max_retries} retries — {_final_summary}")
+                            self._emit_status(f"❌ 重試 {max_retries} 次後仍受到速率限制：{_final_summary}")
                         else:
-                            self._emit_status(f"❌ API failed after {max_retries} retries — {_final_summary}")
+                            self._emit_status(f"❌ API 重試 {max_retries} 次後仍失敗：{_final_summary}")
                         self._vprint(f"{self.log_prefix}   💀 Final error: {_final_summary}", force=True)
 
                         # Detect SSE stream-drop pattern (e.g. "Network
@@ -12808,15 +12804,13 @@ class AIAgent:
                                 api_kwargs, reason="max_retries_exhausted", error=api_error,
                             )
                         self._persist_session(messages, conversation_history)
-                        _final_response = f"API call failed after {max_retries} retries: {_final_summary}"
+                        _final_response = f"API 呼叫重試 {max_retries} 次後仍失敗：{_final_summary}"
                         if _is_stream_drop:
                             _final_response += (
-                                "\n\nThe provider's stream connection keeps "
-                                "dropping — this often happens when generating "
-                                "very large tool call responses (e.g. write_file "
-                                "with long content). Try asking me to use "
-                                "execute_code with Python's open() for large "
-                                "files, or to write in smaller sections."
+                                "\n\n供應方的串流連線持續中斷。這常發生在模型要產生"
+                                "很大的工具呼叫內容時（例如用 write_file 寫入大量文字）。"
+                                "可以請我改用 execute_code 搭配 Python open() 處理大型檔案，"
+                                "或分段寫入。"
                             )
                         return {
                             "final_response": _final_response,
@@ -12840,9 +12834,9 @@ class AIAgent:
                                     pass
                     wait_time = _retry_after if _retry_after else jittered_backoff(retry_count, base_delay=2.0, max_delay=60.0)
                     if is_rate_limited:
-                        self._emit_status(f"⏱️ Rate limited. Waiting {wait_time:.1f}s (attempt {retry_count + 1}/{max_retries})...")
+                        self._emit_status(f"⏱️ 受到速率限制，等待 {wait_time:.1f} 秒（第 {retry_count + 1}/{max_retries} 次）...")
                     else:
-                        self._emit_status(f"⏳ Retrying in {wait_time:.1f}s (attempt {retry_count}/{max_retries})...")
+                        self._emit_status(f"⏳ {wait_time:.1f} 秒後重試（第 {retry_count}/{max_retries} 次）...")
                     logger.warning(
                         "Retrying API call in %ss (attempt %s/%s) %s error=%s",
                         wait_time,
@@ -13002,12 +12996,12 @@ class AIAgent:
                     self._vprint(f"{self.log_prefix}⚠️  Incomplete <REASONING_SCRATCHPAD> detected (opened but never closed)")
                     
                     if self._incomplete_scratchpad_retries <= 2:
-                        self._vprint(f"{self.log_prefix}🔄 Retrying API call ({self._incomplete_scratchpad_retries}/2)...")
+                        self._vprint(f"{self.log_prefix}🔄 正在重試 API 呼叫（{self._incomplete_scratchpad_retries}/2）...")
                         # Don't add the broken message, just retry
                         continue
                     else:
                         # Max retries - discard this turn and save as partial
-                        self._vprint(f"{self.log_prefix}❌ Max retries (2) for incomplete scratchpad. Saving as partial.", force=True)
+                        self._vprint(f"{self.log_prefix}❌ 不完整 scratchpad 已達最大重試次數（2），將保存為部分結果。", force=True)
                         self._incomplete_scratchpad_retries = 0
                         
                         rolled_back_messages = self._get_messages_up_to_last_assistant(messages)
@@ -13068,7 +13062,7 @@ class AIAgent:
 
                     if self._codex_incomplete_retries < 3:
                         if not self.quiet_mode:
-                            self._vprint(f"{self.log_prefix}↻ Codex response incomplete; continuing turn ({self._codex_incomplete_retries}/3)")
+                            self._vprint(f"{self.log_prefix}↻ Codex 回覆不完整，正在繼續本輪（{self._codex_incomplete_retries}/3）")
                         self._session_messages = messages
                         self._save_session_log(messages)
                         continue
@@ -13089,7 +13083,7 @@ class AIAgent:
                 # Check for tool calls
                 if assistant_message.tool_calls:
                     if not self.quiet_mode:
-                        self._vprint(f"{self.log_prefix}🔧 Processing {len(assistant_message.tool_calls)} tool call(s)...")
+                        self._vprint(f"{self.log_prefix}🔧 正在處理 {len(assistant_message.tool_calls)} 個工具呼叫...")
                     
                     if self.verbose_logging:
                         for tc in assistant_message.tool_calls:
@@ -13115,10 +13109,10 @@ class AIAgent:
                         available = ", ".join(sorted(self.valid_tool_names))
                         invalid_name = invalid_tool_calls[0]
                         invalid_preview = invalid_name[:80] + "..." if len(invalid_name) > 80 else invalid_name
-                        self._vprint(f"{self.log_prefix}⚠️  Unknown tool '{invalid_preview}' — sending error to model for self-correction ({self._invalid_tool_retries}/3)")
+                        self._vprint(f"{self.log_prefix}⚠️  未知工具 '{invalid_preview}'，正在把錯誤交給模型自我修正（{self._invalid_tool_retries}/3）")
 
                         if self._invalid_tool_retries >= 3:
-                            self._vprint(f"{self.log_prefix}❌ Max retries (3) for invalid tool calls exceeded. Stopping as partial.", force=True)
+                            self._vprint(f"{self.log_prefix}❌ 無效工具呼叫已超過最大重試次數（3），將停止並保存為部分結果。", force=True)
                             self._invalid_tool_retries = 0
                             self._persist_session(messages, conversation_history)
                             return {
@@ -13134,9 +13128,9 @@ class AIAgent:
                         messages.append(assistant_msg)
                         for tc in assistant_message.tool_calls:
                             if tc.function.name not in self.valid_tool_names:
-                                content = f"Tool '{tc.function.name}' does not exist. Available tools: {available}"
+                                content = f"工具 '{tc.function.name}' 不存在。可用工具：{available}"
                             else:
-                                content = "Skipped: another tool call in this turn used an invalid name. Please retry this tool call."
+                                content = "已略過：本輪其他工具呼叫使用了無效名稱。請重試這個工具呼叫。"
                             messages.append({
                                 "role": "tool",
                                 "name": tc.function.name,
@@ -13201,16 +13195,16 @@ class AIAgent:
                         self._invalid_json_retries += 1
 
                         tool_name, error_msg = invalid_json_args[0]
-                        self._vprint(f"{self.log_prefix}⚠️  Invalid JSON in tool call arguments for '{tool_name}': {error_msg}")
+                        self._vprint(f"{self.log_prefix}⚠️  工具 '{tool_name}' 的參數不是有效 JSON：{error_msg}")
 
                         if self._invalid_json_retries < 3:
-                            self._vprint(f"{self.log_prefix}🔄 Retrying API call ({self._invalid_json_retries}/3)...")
+                            self._vprint(f"{self.log_prefix}🔄 正在重試 API 呼叫（{self._invalid_json_retries}/3）...")
                             # Don't add anything to messages, just retry the API call
                             continue
                         else:
                             # Instead of returning partial, inject tool error results so the model can recover.
                             # Using tool results (not user messages) preserves role alternation.
-                            self._vprint(f"{self.log_prefix}⚠️  Injecting recovery tool results for invalid JSON...")
+                            self._vprint(f"{self.log_prefix}⚠️  正在為無效 JSON 注入恢復用的工具結果...")
                             self._invalid_json_retries = 0  # Reset for next attempt
                             
                             # Append the assistant message with its (broken) tool_calls
@@ -13223,12 +13217,12 @@ class AIAgent:
                                 if tc.function.name in invalid_names:
                                     err = next(e for n, e in invalid_json_args if n == tc.function.name)
                                     tool_result = (
-                                        f"Error: Invalid JSON arguments. {err}. "
-                                        f"For tools with no required parameters, use an empty object: {{}}. "
-                                        f"Please retry with valid JSON."
+                                        f"錯誤：JSON 參數無效。{err}。"
+                                        f"如果工具沒有必要參數，請使用空物件：{{}}。"
+                                        f"請用有效 JSON 重試。"
                                     )
                                 else:
-                                    tool_result = "Skipped: other tool call in this response had invalid JSON."
+                                    tool_result = "已略過：這次回覆中的其他工具呼叫有無效 JSON。"
                                 messages.append({
                                     "role": "tool",
                                     "name": tc.function.name,
@@ -13325,7 +13319,7 @@ class AIAgent:
                         _turn_exit_reason = "guardrail_halt"
                         final_response = self._toolguard_controlled_halt_response(decision)
                         self._emit_status(
-                            f"⚠️ Tool guardrail halted {decision.tool_name}: {decision.code}"
+                            f"⚠️ 工具安全規則已停止 {decision.tool_name}：{decision.code}"
                         )
                         messages.append({"role": "assistant", "content": final_response})
                         break
@@ -13430,8 +13424,7 @@ class AIAgent:
                                 len(_recovered),
                             )
                             self._emit_status(
-                                "↻ Stream interrupted — using delivered content "
-                                "as final response"
+                                "↻ 串流已中斷，改用已送出的內容作為最終回覆"
                             )
                             final_response = _recovered
                             self._response_was_previewed = True
@@ -13451,7 +13444,7 @@ class AIAgent:
                         if fallback and getattr(self, '_last_content_tools_all_housekeeping', False):
                             _turn_exit_reason = "fallback_prior_turn_content"
                             logger.info("Empty follow-up after tool calls — using prior turn content as final response")
-                            self._emit_status("↻ Empty response after tool calls — using earlier content as final answer")
+                            self._emit_status("↻ 工具呼叫後回覆為空，改用先前內容作為最終回覆")
                             self._last_content_with_tools = None
                             self._last_content_tools_all_housekeeping = False
                             self._empty_content_retries = 0
@@ -13507,8 +13500,7 @@ class AIAgent:
                                 "to continue processing"
                             )
                             self._emit_status(
-                                "⚠️ Model returned empty after tool calls — "
-                                "nudging to continue"
+                                "⚠️ 模型在工具呼叫後回覆為空，正在提醒它繼續處理"
                             )
                             # Append the empty assistant message first so the
                             # message sequence stays valid:
@@ -13551,7 +13543,7 @@ class AIAgent:
                                 self._thinking_prefill_retries,
                             )
                             self._emit_status(
-                                f"↻ Thinking-only response — prefilling to continue "
+                                f"↻ 只有推理內容、沒有可見回覆，正在補齊以繼續 "
                                 f"({self._thinking_prefill_retries}/2)"
                             )
                             interim_msg = self._build_assistant_message(
@@ -13587,7 +13579,7 @@ class AIAgent:
                                 self._empty_content_retries, self.model,
                             )
                             self._emit_status(
-                                f"⚠️ Empty response from model — retrying "
+                                f"⚠️ 模型回覆為空，正在重試 "
                                 f"({self._empty_content_retries}/3)"
                             )
                             continue
@@ -13606,13 +13598,12 @@ class AIAgent:
                                 self.provider,
                             )
                             self._emit_status(
-                                "⚠️ Model returning empty responses — "
-                                "switching to fallback provider..."
+                                "⚠️ 模型持續回覆為空，正在切換備援供應方..."
                             )
                             if self._try_activate_fallback():
                                 self._empty_content_retries = 0
                                 self._emit_status(
-                                    f"↻ Switched to fallback: {self.model} "
+                                    f"↻ 已切換到備援：{self.model} "
                                     f"({self.provider})"
                                 )
                                 logger.info(
@@ -13639,8 +13630,7 @@ class AIAgent:
                                 "Reasoning: %s", reasoning_preview,
                             )
                             self._emit_status(
-                                "⚠️ Model produced reasoning but no visible "
-                                "response after all retries. Returning empty."
+                                "⚠️ 模型只產生推理內容，重試後仍沒有可見回覆，將回傳空回覆。"
                             )
                         else:
                             logger.warning(
@@ -13651,9 +13641,9 @@ class AIAgent:
                                 self.provider,
                             )
                             self._emit_status(
-                                "❌ Model returned no content after all retries"
-                                + (" and fallback attempts." if self._fallback_chain else
-                                   ". No fallback providers configured.")
+                                "❌ 模型重試後仍沒有產生內容"
+                                + ("，備援嘗試也失敗。" if self._fallback_chain else
+                                   "，且目前沒有設定備援供應方。")
                             )
 
                         final_response = "(empty)"
@@ -13716,7 +13706,7 @@ class AIAgent:
                     
                     _turn_exit_reason = f"text_response(finish_reason={finish_reason})"
                     if not self.quiet_mode:
-                        self._safe_print(f"🎉 Conversation completed after {api_call_count} OpenAI-compatible API call(s)")
+                        self._safe_print(f"🎉 對話完成，共使用 {api_call_count} 次 OpenAI-compatible API 呼叫")
                     break
                 
             except Exception as e:
@@ -13779,13 +13769,13 @@ class AIAgent:
             # user message and makes a single toolless request.
             _turn_exit_reason = f"max_iterations_reached({api_call_count}/{self.max_iterations})"
             self._emit_status(
-                f"⚠️ Iteration budget exhausted ({api_call_count}/{self.max_iterations}) "
-                "— asking model to summarise"
+                f"⚠️ 已用完執行輪數預算（{api_call_count}/{self.max_iterations}），"
+                "正在請模型整理摘要"
             )
             if not self.quiet_mode:
                 self._safe_print(
-                    f"\n⚠️  Iteration budget exhausted ({api_call_count}/{self.max_iterations}) "
-                    "— requesting summary..."
+                    f"\n⚠️  已用完執行輪數預算（{api_call_count}/{self.max_iterations}），"
+                    "正在請模型整理摘要..."
                 )
             final_response = self._handle_max_iterations(messages, api_call_count)
         

@@ -96,7 +96,7 @@ class TestHandleUpdateCommand:
             with patch("gateway.run.__file__", fake_file):
                 result = await runner._handle_update_command(event)
 
-        assert "Not a git repository" in result
+        assert "不是 git repository" in result
 
     @pytest.mark.asyncio
     async def test_no_hermes_binary(self, tmp_path):
@@ -118,7 +118,7 @@ class TestHandleUpdateCommand:
              patch("importlib.util.find_spec", return_value=None):
             result = await runner._handle_update_command(event)
 
-        assert "Could not locate" in result
+        assert "找不到 `hermes` 指令" in result
         assert "hermes update" in result
 
     @pytest.mark.asyncio
@@ -146,7 +146,7 @@ class TestHandleUpdateCommand:
              patch("subprocess.Popen", mock_popen):
             result = await runner._handle_update_command(event)
 
-        assert "Starting Hermes update" in result
+        assert "Hermes 更新已開始" in result
         call_args = mock_popen.call_args[0][0]
         # The update_cmd uses sys.executable -m hermes_cli.main
         joined = " ".join(call_args) if isinstance(call_args, list) else call_args
@@ -270,7 +270,7 @@ class TestHandleUpdateCommand:
         assert call_args[0] == "/usr/bin/setsid"
         assert call_args[1] == "bash"
         assert ".update_exit_code" in call_args[-1]
-        assert "Starting Hermes update" in result
+        assert "Hermes 更新已開始" in result
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_setsid(self, tmp_path):
@@ -310,7 +310,7 @@ class TestHandleUpdateCommand:
         # start_new_session=True should be in kwargs
         call_kwargs = mock_popen.call_args[1]
         assert call_kwargs.get("start_new_session") is True
-        assert "Starting Hermes update" in result
+        assert "Hermes 更新已開始" in result
 
     @pytest.mark.asyncio
     async def test_popen_failure_cleans_up(self, tmp_path):
@@ -333,7 +333,7 @@ class TestHandleUpdateCommand:
              patch("subprocess.Popen", side_effect=OSError("spawn failed")):
             result = await runner._handle_update_command(event)
 
-        assert "Failed to start update" in result
+        assert "無法啟動更新" in result
         # Pending file should be cleaned up
         assert not (hermes_home / ".update_pending.json").exists()
         assert not (hermes_home / ".update_exit_code").exists()
@@ -359,7 +359,7 @@ class TestHandleUpdateCommand:
              patch("subprocess.Popen"):
             result = await runner._handle_update_command(event)
 
-        assert "stream progress" in result
+        assert "同步進度" in result
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +554,7 @@ class TestSendUpdateNotification:
 
         assert result is True
         sent_text = mock_adapter.send.call_args[0][1]
-        assert "update failed" in sent_text.lower()
+        assert "更新失敗" in sent_text
         assert "Traceback: boom" in sent_text
 
     @pytest.mark.asyncio
@@ -576,7 +576,7 @@ class TestSendUpdateNotification:
             await runner._send_update_notification()
 
         sent_text = mock_adapter.send.call_args[0][1]
-        assert "finished successfully" in sent_text
+        assert "成功完成" in sent_text
 
     @pytest.mark.asyncio
     async def test_cleans_up_files_after_notification(self, tmp_path):

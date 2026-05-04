@@ -1340,7 +1340,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
             msg = messages[i].copy()
             if i == 0 and msg.get("role") == "system":
                 existing = msg.get("content")
-                _compression_note = "[Note: Some earlier conversation turns have been compacted into a handoff summary to preserve context space. The current session state may still reflect earlier work, so build on that summary and state rather than re-doing work.]"
+                _compression_note = "[提示：部分較早的對話已被壓縮成交接摘要，以保留上下文空間。目前工作狀態仍可能包含先前進度，請承接摘要與狀態，不要重做已完成的事。]"
                 if _compression_note not in _content_text_for_contains(existing):
                     msg["content"] = _append_text_to_content(
                         existing,

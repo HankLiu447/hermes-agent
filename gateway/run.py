@@ -1882,6 +1882,12 @@ class GatewayRunner:
     def _status_action_gerund(self) -> str:
         return "restarting" if self._restart_requested else "shutting down"
 
+    def _status_action_label_zh(self) -> str:
+        return "重新啟動" if self._restart_requested else "關閉"
+
+    def _status_action_progress_zh(self) -> str:
+        return "重新啟動中" if self._restart_requested else "關閉中"
+
     def _queue_during_drain_enabled(self) -> bool:
         # Both "queue" and "steer" modes imply the user doesn't want messages
         # to be lost during restart — queue them for the newly-spawned gateway
@@ -2336,9 +2342,9 @@ class GatewayRunner:
             thread_meta = {"thread_id": event.source.thread_id} if event.source.thread_id else None
             if self._queue_during_drain_enabled():
                 self._queue_or_replace_pending_event(session_key, event)
-                message = f"⏳ Gateway {self._status_action_gerund()} — queued for the next turn after it comes back."
+                message = f"⏳ 系統正在{self._status_action_label_zh()}，你的訊息已排到恢復後的下一輪。"
             else:
-                message = f"⏳ Gateway is {self._status_action_gerund()} and is not accepting another turn right now."
+                message = f"⏳ 系統正在{self._status_action_progress_zh()}，目前暫時不能接新的對話。"
 
             await adapter._send_with_retry(
                 chat_id=event.source.chat_id,
@@ -2428,29 +2434,29 @@ class GatewayRunner:
                 if start_ts:
                     elapsed_min = int((now - start_ts) / 60)
                     if elapsed_min > 0:
-                        status_parts.append(f"{elapsed_min} min elapsed")
+                        status_parts.append(f"已執行 {elapsed_min} 分鐘")
                 if max_iter:
-                    status_parts.append(f"iteration {iteration}/{max_iter}")
+                    status_parts.append(f"第 {iteration}/{max_iter} 輪")
                 if current_tool:
-                    status_parts.append(f"running: {current_tool}")
+                    status_parts.append(f"正在處理：{current_tool}")
             except Exception:
                 pass
 
-        status_detail = f" ({', '.join(status_parts)})" if status_parts else ""
+        status_detail = f"（{'，'.join(status_parts)}）" if status_parts else ""
         if is_steer_mode:
             message = (
-                f"⏩ Steered into current run{status_detail}. "
-                f"Your message arrives after the next tool call."
+                f"⏩ 已把你的補充加入目前這輪{status_detail}。"
+                f"會在下一個工具步驟後生效。"
             )
         elif is_queue_mode:
             message = (
-                f"⏳ Queued for the next turn{status_detail}. "
-                f"I'll respond once the current task finishes."
+                f"⏳ 已排到下一輪{status_detail}。"
+                f"我會在目前工作完成後回覆。"
             )
         else:
             message = (
-                f"⚡ Interrupting current task{status_detail}. "
-                f"I'll respond to your message shortly."
+                f"⚡ 正在中斷目前工作{status_detail}。"
+                f"我會接著回覆你的訊息。"
             )
 
         # First-touch onboarding: the very first time a user sends a message
@@ -2542,14 +2548,13 @@ class GatewayRunner:
         """
         active = self._snapshot_running_agents()
 
-        action = "restarting" if self._restart_requested else "shutting down"
+        action = self._status_action_progress_zh()
         hint = (
-            "Your current task will be interrupted. "
-            "Send any message after restart and I'll try to resume where you left off."
+            "目前工作會被中斷。重新啟動後傳任意訊息，我會嘗試接續剛才的進度。"
             if self._restart_requested
-            else "Your current task will be interrupted."
+            else "目前工作會被中斷。"
         )
-        msg = f"⚠️ Gateway {action} — {hint}"
+        msg = f"⚠️ 系統正在{action}：{hint}"
 
         notified: set[tuple[str, str, Optional[str]]] = set()
         for session_key in active:
@@ -4892,9 +4897,8 @@ class GatewayRunner:
                 # drop; the gateway will be back up in a moment via the
                 # service manager / profile-watcher respawn.
                 return (
-                    "⟳ Gateway code was updated in the background — "
-                    "restarting this gateway so your next message runs "
-                    "on the new code. Please retry in a moment."
+                    "⟳ Gateway 程式碼已在背景更新，正在重新啟動。"
+                    "請稍後再傳下一則訊息，我會用新的程式碼繼續處理。"
                 )
         except Exception as _stale_exc:
             logger.debug("Stale-code self-check failed: %s", _stale_exc)
@@ -4971,9 +4975,9 @@ class GatewayRunner:
                     if adapter:
                         await adapter.send(
                             source.chat_id,
-                            f"Hi~ I don't recognize you yet!\n\n"
-                            f"Here's your pairing code: `{code}`\n\n"
-                            f"Ask the bot owner to run:\n"
+                            f"嗨，我目前還不認得你。\n\n"
+                            f"這是你的配對碼：`{code}`\n\n"
+                            f"請 bot 管理者執行：\n"
                             f"`hermes pairing approve {platform_name} {code}`"
                         )
                 else:
@@ -4981,8 +4985,7 @@ class GatewayRunner:
                     if adapter:
                         await adapter.send(
                             source.chat_id,
-                            "Too many pairing requests right now~ "
-                            "Please try again later!"
+                            "目前配對請求太多，請稍後再試。"
                         )
                     # Record rate limit so subsequent messages are silently ignored
                     self.pairing_store._record_rate_limit(platform_name, source.user_id)
@@ -5031,10 +5034,10 @@ class GatewayRunner:
                     tmp.replace(response_path)
                 except OSError as e:
                     logger.warning("Failed to write update response: %s", e)
-                    return f"✗ Failed to send response to update process: {e}"
+                    return f"✗ 無法把回覆送到更新流程：{e}"
                 _update_prompts.pop(_quick_key, None)
                 label = response_text if len(response_text) <= 20 else response_text[:20] + "…"
-                return f"✓ Sent `{label}` to the update process."
+                return f"✓ 已送出 `{label}` 給更新流程。"
             # Recognized slash command during a pending update prompt:
             # unblock the detached update subprocess by writing a blank
             # response so ``_gateway_prompt`` returns the prompt's default
@@ -5192,7 +5195,7 @@ class GatewayRunner:
                     invalidation_reason="stop_command",
                 )
                 logger.info("STOP for session %s — agent interrupted, session lock released", _quick_key)
-                return EphemeralReply("⚡ Stopped. You can continue this session.")
+                return EphemeralReply("⚡ 已停止。你可以繼續這段對話。")
 
             # /reset and /new must bypass the running-agent guard so they
             # actually dispatch as commands instead of being queued as user
@@ -5220,7 +5223,7 @@ class GatewayRunner:
             if event.get_command() in ("queue", "q"):
                 queued_text = event.get_command_args().strip()
                 if not queued_text:
-                    return "Usage: /queue <prompt>"
+                    return "用法：/queue <要排隊的訊息>"
                 adapter = self.adapters.get(source.platform)
                 if adapter:
                     queued_event = MessageEvent(
@@ -5233,8 +5236,8 @@ class GatewayRunner:
                     self._enqueue_fifo(_quick_key, queued_event, adapter)
                 depth = self._queue_depth(_quick_key, adapter=self.adapters.get(source.platform))
                 if depth <= 1:
-                    return "Queued for the next turn."
-                return f"Queued for the next turn. ({depth} queued)"
+                    return "已排到下一輪。"
+                return f"已排到下一輪。（目前共 {depth} 則排隊中）"
 
             # /steer <prompt> — inject mid-run after the next tool call.
             # Unlike /queue (turn boundary), /steer lands BETWEEN tool-call
@@ -5244,7 +5247,7 @@ class GatewayRunner:
             if _cmd_def_inner and _cmd_def_inner.name == "steer":
                 steer_text = event.get_command_args().strip()
                 if not steer_text:
-                    return "Usage: /steer <prompt>"
+                    return "用法：/steer <要加入目前這輪的補充>"
                 running_agent = self._running_agents.get(_quick_key)
                 if running_agent is _AGENT_PENDING_SENTINEL:
                     # Agent hasn't started yet — queue as turn-boundary fallback.
@@ -5258,17 +5261,17 @@ class GatewayRunner:
                             channel_prompt=event.channel_prompt,
                         )
                         adapter._pending_messages[_quick_key] = queued_event
-                    return "Agent still starting — /steer queued for the next turn."
+                    return "我這邊還在啟動，已把 `/steer` 內容排到下一輪。"
                 if running_agent and hasattr(running_agent, "steer"):
                     try:
                         accepted = running_agent.steer(steer_text)
                     except Exception as exc:
                         logger.warning("Steer failed for session %s: %s", _quick_key, exc)
-                        return f"⚠️ Steer failed: {exc}"
+                        return f"⚠️ 補充加入失敗：{exc}"
                     if accepted:
                         preview = steer_text[:60] + ("..." if len(steer_text) > 60 else "")
-                        return f"⏩ Steer queued — arrives after the next tool call: '{preview}'"
-                    return "Steer rejected (empty payload)."
+                        return f"⏩ 已加入目前這輪，會在下一個工具步驟後生效：'{preview}'"
+                    return "補充內容是空的，沒有加入目前這輪。"
                 # Running agent is missing or lacks steer() — fall back to queue.
                 adapter = self.adapters.get(source.platform)
                 if adapter:
@@ -5280,11 +5283,11 @@ class GatewayRunner:
                         channel_prompt=event.channel_prompt,
                     )
                     adapter._pending_messages[_quick_key] = queued_event
-                return "No active agent — /steer queued for the next turn."
+                return "目前沒有正在執行的工作，已把 `/steer` 內容排到下一輪。"
 
             # /model must not be used while the agent is running.
             if _cmd_def_inner and _cmd_def_inner.name == "model":
-                return "Agent is running — wait or /stop first, then switch models."
+                return "我這邊還在處理中；請等這輪完成，或先用 `/stop` 停止後再切換模型。"
 
             # /approve and /deny must bypass the running-agent interrupt path.
             # The agent thread is blocked on a threading.Event inside
@@ -5323,7 +5326,7 @@ class GatewayRunner:
                 _goal_arg = (event.get_command_args() or "").strip().lower()
                 if not _goal_arg or _goal_arg in ("status", "pause", "resume", "clear", "stop", "done"):
                     return await self._handle_goal_command(event)
-                return "Agent is running — use /goal status / pause / clear mid-run, or /stop before setting a new goal."
+                return "我這邊還在處理中；可在本輪中使用 `/goal status`、`/goal pause` 或 `/goal clear`，若要設定新目標請先用 `/stop`。"
 
             # Session-level toggles that are safe to run mid-agent —
             # /yolo can unblock a pending approval prompt, /verbose cycles
@@ -5364,8 +5367,8 @@ class GatewayRunner:
             # producing a zero-char response. See #5057, #6252, #10370.
             if _cmd_def_inner:
                 return (
-                    f"⏳ Agent is running — `/{_cmd_def_inner.name}` can't run "
-                    f"mid-turn. Wait for the current response or `/stop` first."
+                    f"⏳ 我這邊還在處理中，`/{_cmd_def_inner.name}` 不能在本輪中執行。"
+                    f"請等目前回覆完成，或先用 `/stop` 停止。"
                 )
 
             if event.message_type == MessageType.PHOTO:
@@ -5408,7 +5411,7 @@ class GatewayRunner:
                     # Force-clean the sentinel so the session is unlocked.
                     self._release_running_agent_state(_quick_key)
                     logger.info("HARD STOP (pending) for session %s — sentinel cleared", _quick_key)
-                    return EphemeralReply("⚡ Force-stopped. The agent was still starting — session unlocked.")
+                    return EphemeralReply("⚡ 已強制停止。剛才仍在啟動中，現在對話已解鎖。")
                 # Queue the message so it will be picked up after the
                 # agent starts.
                 adapter = self.adapters.get(source.platform)
@@ -5424,9 +5427,9 @@ class GatewayRunner:
                 if self._queue_during_drain_enabled():
                     self._queue_or_replace_pending_event(_quick_key, event)
                 return (
-                    f"⏳ Gateway {self._status_action_gerund()} — queued for the next turn after it comes back."
+                    f"⏳ 系統正在{self._status_action_label_zh()}，你的訊息已排到恢復後的下一輪。"
                     if self._queue_during_drain_enabled()
-                    else f"⏳ Gateway is {self._status_action_gerund()} and is not accepting another turn right now."
+                    else f"⏳ 系統正在{self._status_action_progress_zh()}，目前暫時不能接新的對話。"
                 )
             if self._busy_input_mode == "queue":
                 logger.debug("PRIORITY queue follow-up for session %s", _quick_key)
@@ -5532,7 +5535,7 @@ class GatewayRunner:
                     message = hook_result.get("message")
                     if isinstance(message, str) and message:
                         return message
-                    return f"Command `/{command}` was blocked by a hook."
+                    return f"指令 `/{command}` 已被 hook 阻擋。"
                 if decision == "handled":
                     message = hook_result.get("message")
                     return message if isinstance(message, str) and message else None
@@ -5659,7 +5662,7 @@ class GatewayRunner:
             # message. If the payload is empty, surface the usage hint.
             steer_payload = event.get_command_args().strip()
             if not steer_payload:
-                return "Usage: /steer <prompt>  (no agent is running; sending as a normal message)"
+                return "用法：/steer <要加入目前這輪的補充>（目前沒有正在執行的工作；也可以直接傳一般訊息）"
             try:
                 event.text = steer_payload
             except Exception:
@@ -5675,7 +5678,7 @@ class GatewayRunner:
             return await self._handle_voice_command(event)
 
         if self._draining:
-            return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
+            return f"⏳ 系統正在{self._status_action_progress_zh()}，目前暫時不能接新的工作。"
 
         # User-defined quick commands (bypass agent loop, no LLM call)
         if command:
@@ -5698,13 +5701,13 @@ class GatewayRunner:
                             )
                             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
                             output = (stdout or stderr).decode().strip()
-                            return output if output else "Command returned no output."
+                            return output if output else "指令沒有輸出。"
                         except asyncio.TimeoutError:
-                            return "Quick command timed out (30s)."
+                            return "快速指令逾時（30 秒）。"
                         except Exception as e:
-                            return f"Quick command error: {e}"
+                            return f"快速指令錯誤：{e}"
                     else:
-                        return f"Quick command '/{command}' has no command defined."
+                        return f"快速指令 `/{command}` 尚未設定要執行的 command。"
                 elif qcmd.get("type") == "alias":
                     target = qcmd.get("target", "").strip()
                     if target:
@@ -5715,9 +5718,9 @@ class GatewayRunner:
                         command = target_command.split()[0] if target_command else target_command
                         # Fall through to normal command dispatch below
                     else:
-                        return f"Quick command '/{command}' has no target defined."
+                        return f"快速指令 `/{command}` 尚未設定目標指令。"
                 else:
-                    return f"Quick command '/{command}' has unsupported type (supported: 'exec', 'alias')."
+                    return f"快速指令 `/{command}` 的類型不支援（支援：`exec`、`alias`）。"
 
         # Plugin-registered slash commands
         if command:
@@ -6190,19 +6193,19 @@ class GatewayRunner:
                     adapter = self.adapters.get(source.platform)
                     if adapter:
                         if reset_reason == "suspended":
-                            reason_text = "previous session was stopped or interrupted"
+                            reason_text = "前一段對話被停止或中斷"
                         elif reset_reason == "daily":
-                            reason_text = f"daily schedule at {policy.at_hour}:00"
+                            reason_text = f"每日排程 {policy.at_hour}:00"
                         else:
                             hours = policy.idle_minutes // 60
                             mins = policy.idle_minutes % 60
                             duration = f"{hours}h" if not mins else f"{hours}h {mins}m" if hours else f"{mins}m"
-                            reason_text = f"inactive for {duration}"
+                            reason_text = f"已閒置 {duration}"
                         notice = (
-                            f"◐ Session automatically reset ({reason_text}). "
-                            f"Conversation history cleared.\n"
-                            f"Use /resume to browse and restore a previous session.\n"
-                            f"Adjust reset timing in config.yaml under session_reset."
+                            f"◐ 對話已自動重置（{reason_text}）。"
+                            f"對話紀錄已清空。\n"
+                            f"可用 `/resume` 瀏覽並恢復先前對話。\n"
+                            f"若要調整重置時間，請修改 config.yaml 的 session_reset。"
                         )
                         try:
                             session_info = self._format_session_info()
@@ -6519,12 +6522,11 @@ class GatewayRunner:
                                         _dropped = getattr(_comp, "_last_summary_dropped_count", 0)
                                         _err = getattr(_comp, "_last_summary_error", None) or "unknown error"
                                         _warn_msg = (
-                                            "⚠️ Context compression summary failed "
-                                            f"({_err}). {_dropped} historical message(s) "
-                                            "were removed and replaced with a placeholder. "
-                                            "Earlier context is no longer recoverable. "
-                                            "Consider /reset for a clean session, or check "
-                                            "your auxiliary.compression model configuration."
+                                            "⚠️ 對話壓縮摘要失敗"
+                                            f"（{_err}）。已移除 {_dropped} 則歷史訊息，"
+                                            "並以佔位摘要替代；更早的脈絡已無法從本輪恢復。"
+                                            "可以用 `/reset` 開新對話，或檢查 "
+                                            "`auxiliary.compression.model` 設定。"
                                         )
                                         try:
                                             _adapter = self.adapters.get(source.platform)
@@ -6545,10 +6547,10 @@ class GatewayRunner:
                                         _aux_model = getattr(_comp, "_last_aux_model_failure_model", "")
                                         _aux_err = getattr(_comp, "_last_aux_model_failure_error", None) or "unknown error"
                                         _aux_msg = (
-                                            f"ℹ️ Configured compression model `{_aux_model}` "
-                                            f"failed ({_aux_err}). Recovered using your main "
-                                            "model — context is intact — but you may want to "
-                                            "check `auxiliary.compression.model` in config.yaml."
+                                            f"ℹ️ 目前設定的壓縮模型 `{_aux_model}` "
+                                            f"失敗（{_aux_err}）。已改用主要模型完成恢復，"
+                                            "脈絡仍然保留；建議檢查 config.yaml 裡的 "
+                                            "`auxiliary.compression.model`。"
                                         )
                                         try:
                                             _adapter = self.adapters.get(source.platform)
@@ -6570,9 +6572,9 @@ class GatewayRunner:
         # First-message onboarding -- only on the very first interaction ever
         if not history and not self.session_store.has_any_sessions():
             context_prompt += (
-                "\n\n[System note: This is the user's very first message ever. "
-                "Briefly introduce yourself and mention that /help shows available commands. "
-                "Keep the introduction concise -- one or two sentences max.]"
+                "\n\n[系統提示：這是使用者第一次傳訊息。"
+                "請簡短介紹自己，並提到 /help 可以查看可用指令。"
+                "介紹要精簡，最多一到兩句。]"
             )
         
         # One-time prompt if no home channel is set for this platform
@@ -6590,11 +6592,10 @@ class GatewayRunner:
                     else "/sethome"
                 )
                 notice = (
-                    f"📬 No home channel is set for {platform_name.title()}. "
-                    f"A home channel is where Hermes delivers cron job results "
-                    f"and cross-platform messages.\n\n"
-                    f"Type {sethome_cmd} to make this chat your home channel, "
-                    f"or ignore to skip."
+                    f"📬 {platform_name.title()} 還沒有設定主要接收聊天室。"
+                    f"之後排程結果與跨平台訊息會送到這個聊天室。\n\n"
+                    f"輸入 {sethome_cmd} 可把這個聊天室設為主要接收位置；"
+                    f"如果暫時不需要，也可以忽略。"
                 )
                 await self._deliver_platform_notice(source, notice)
         
@@ -6696,9 +6697,8 @@ class GatewayRunner:
             # looks like a bug; a short explanation is more helpful.
             if response == "(empty)":
                 response = (
-                    "⚠️ The model returned no response after processing tool "
-                    "results. This can happen with some models — try again or "
-                    "rephrase your question."
+                    "⚠️ 模型處理工具結果後沒有產生可見回覆。"
+                    "這在部分模型上可能發生；可以再試一次，或換個方式問。"
                 )
             agent_messages = agent_result.get("messages", [])
             _response_time = time.time() - _msg_start_time
@@ -6746,14 +6746,13 @@ class GatewayRunner:
 
                 if _is_ctx_fail:
                     response = (
-                        "⚠️ Session too large for the model's context window.\n"
-                        "Use /compact to compress the conversation, or "
-                        "/reset to start fresh."
+                        "⚠️ 這段對話已超過模型可處理的上下文大小。\n"
+                        "可以使用 `/compact` 壓縮對話，或用 `/reset` 重新開始。"
                     )
                 else:
                     response = (
-                        f"The request failed: {str(error_detail)[:300]}\n"
-                        "Try again or use /reset to start a fresh session."
+                        f"這次請求失敗：{str(error_detail)[:300]}\n"
+                        "可以再試一次，或用 `/reset` 重新開始。"
                     )
 
             # If the agent's session_id changed during compression, update
@@ -6911,9 +6910,8 @@ class GatewayRunner:
                 if hasattr(self, "_pending_model_notes"):
                     self._pending_model_notes.pop(session_key, None)
                 response = (response or "") + (
-                    "\n\n🔄 Session auto-reset — the conversation exceeded the "
-                    "maximum context size and could not be compressed further. "
-                    "Your next message will start a fresh session."
+                    "\n\n🔄 已自動重置對話：這段對話超過最大上下文大小，"
+                    "而且無法再進一步壓縮。你的下一則訊息會從新的對話開始。"
                 )
 
             ts = datetime.now().isoformat()
@@ -7044,9 +7042,9 @@ class GatewayRunner:
             status_code = getattr(e, "status_code", None)
             _hist_len = len(history) if 'history' in locals() else 0
             if status_code == 401:
-                status_hint = " Check your API key or run `claude /login` to refresh OAuth credentials."
+                status_hint = " 請檢查 API key，或執行 `claude /login` 重新整理 OAuth 憑證。"
             elif status_code == 402:
-                status_hint = " Your API balance or quota is exhausted. Check your provider dashboard."
+                status_hint = " API 額度或餘額已用完，請檢查供應商後台。"
             elif status_code == 429:
                 # Check if this is a plan usage limit (resets on a schedule) vs a transient rate limit
                 _err_body = getattr(e, "response", None)
@@ -7061,30 +7059,29 @@ class GatewayRunner:
                     if _resets_in and _resets_in > 0:
                         import math
                         _hours = math.ceil(_resets_in / 3600)
-                        status_hint = f" Your plan's usage limit has been reached. It resets in ~{_hours}h."
+                        status_hint = f" 目前方案的使用上限已達到，約 {_hours} 小時後重置。"
                     else:
-                        status_hint = " Your plan's usage limit has been reached. Please wait until it resets."
+                        status_hint = " 目前方案的使用上限已達到，請等待重置後再試。"
                 else:
-                    status_hint = " You are being rate-limited. Please wait a moment and try again."
+                    status_hint = " 目前受到速率限制，請稍等再試。"
             elif status_code == 529:
-                status_hint = " The API is temporarily overloaded. Please try again shortly."
+                status_hint = " API 暫時過載，請稍後再試。"
             elif status_code in (400, 500):
                 # 400 with a large session is context overflow.
                 # 500 with a large session often means the payload is too large
                 # for the API to process — treat it the same way.
                 if _hist_len > 50:
                     return (
-                        "⚠️ Session too large for the model's context window.\n"
-                        "Use /compact to compress the conversation, or "
-                        "/reset to start fresh."
+                        "⚠️ 這段對話已超過模型可處理的上下文大小。\n"
+                        "可以使用 `/compact` 壓縮對話，或用 `/reset` 重新開始。"
                     )
                 elif status_code == 400:
-                    status_hint = " The request was rejected by the API."
+                    status_hint = " API 拒絕了這次請求。"
             return (
-                f"Sorry, I encountered an error ({error_type}).\n"
+                f"抱歉，這次處理時遇到錯誤（{error_type}）。\n"
                 f"{error_detail}\n"
                 f"{status_hint}"
-                "Try again or use /reset to start a fresh session."
+                "可以再試一次，或用 `/reset` 重新開始。"
             )
         finally:
             # Restore session context variables to their pre-handler state
@@ -7301,7 +7298,7 @@ class GatewayRunner:
         else:
             # No existing session, just create one
             new_entry = self.session_store.get_or_create_session(source, force_new=True)
-            header = self._telegram_topic_new_header(source) or "✨ New session started!"
+            header = self._telegram_topic_new_header(source) or "✨ 已開始新的對話！"
 
         # Set session title if provided with /new <title>
         _title_arg = event.get_command_args().strip()
@@ -7312,18 +7309,18 @@ class GatewayRunner:
                 sanitized = SessionDB.sanitize_title(_title_arg)
             except ValueError as e:
                 sanitized = None
-                _title_note = f"\n⚠️ Title rejected: {e}"
+                _title_note = f"\n⚠️ 標題被拒絕：{e}"
             if sanitized:
                 try:
                     self._session_db.set_session_title(new_entry.session_id, sanitized)
-                    header = f"✨ New session started: {sanitized}"
+                    header = f"✨ 已開始新的對話：{sanitized}"
                 except ValueError as e:
-                    _title_note = f"\n⚠️ {e} — session started untitled."
+                    _title_note = f"\n⚠️ {e}，已建立未命名對話。"
                 except Exception:
                     pass
             elif not _title_note:
                 # sanitize_title returned empty (whitespace-only / unprintable)
-                _title_note = "\n⚠️ Title is empty after cleanup — session started untitled."
+                _title_note = "\n⚠️ 標題清理後是空的，已建立未命名對話。"
         header = header + _title_note
 
         # When /new runs inside a Telegram DM topic lane, rewrite the
@@ -7349,7 +7346,7 @@ class GatewayRunner:
         # Append a random tip to the reset message
         try:
             from hermes_cli.tips import get_random_tip
-            _tip_line = f"\n✦ Tip: {get_random_tip()}"
+            _tip_line = f"\n✦ 提示：{get_random_tip()}"
         except Exception:
             _tip_line = ""
 
@@ -7366,8 +7363,8 @@ class GatewayRunner:
         profile_name = get_active_profile_name()
 
         lines = [
-            f"👤 **Profile:** `{profile_name}`",
-            f"📂 **Home:** `{display}`",
+            f"👤 **Profile：** `{profile_name}`",
+            f"📂 **Home：** `{display}`",
         ]
 
         return "\n".join(lines)
@@ -7403,7 +7400,7 @@ class GatewayRunner:
         try:
             output = await asyncio.to_thread(run_slash, text)
         except Exception as exc:  # pragma: no cover - defensive
-            return f"⚠ kanban error: {exc}"
+            return f"⚠ kanban 錯誤：{exc}"
 
         # Auto-subscribe on create. Parse the task id from the CLI's standard
         # success line ("Created t_abcd  (ready, assignee=...)"). If the user
@@ -7438,8 +7435,7 @@ class GatewayRunner:
                         await asyncio.to_thread(_sub)
                         output = (
                             output.rstrip()
-                            + f"\n(subscribed — you'll be notified when {task_id} "
-                              f"completes or blocks)"
+                            + f"\n（已訂閱：{task_id} 完成或阻塞時會通知你）"
                         )
                 except Exception as exc:
                     logger.warning("kanban create auto-subscribe failed: %s", exc)
@@ -7447,8 +7443,8 @@ class GatewayRunner:
         # Gateway messages have practical length caps; truncate long
         # listings to keep the UX reasonable.
         if len(output) > 3800:
-            output = output[:3800] + "\n… (truncated; use `hermes kanban …` in your terminal for full output)"
-        return output or "(no output)"
+            output = output[:3800] + "\n…（已截斷；若要看完整輸出，請在終端機使用 `hermes kanban ...`）"
+        return output or "（沒有輸出）"
 
     async def _handle_status_command(self, event: MessageEvent) -> str:
         """Handle /status command."""
@@ -7492,23 +7488,23 @@ class GatewayRunner:
                 db_total_tokens = 0
 
         lines = [
-            "📊 **Hermes Gateway Status**",
+            "📊 **Hermes Gateway 狀態**",
             "",
-            f"**Session ID:** `{session_entry.session_id}`",
+            f"**Session ID：** `{session_entry.session_id}`",
         ]
         if title:
-            lines.append(f"**Title:** {title}")
+            lines.append(f"**標題：** {title}")
         lines.extend([
-            f"**Created:** {session_entry.created_at.strftime('%Y-%m-%d %H:%M')}",
-            f"**Last Activity:** {session_entry.updated_at.strftime('%Y-%m-%d %H:%M')}",
-            f"**Tokens:** {db_total_tokens:,}",
-            f"**Agent Running:** {'Yes ⚡' if is_running else 'No'}",
+            f"**建立時間：** {session_entry.created_at.strftime('%Y-%m-%d %H:%M')}",
+            f"**最後活動：** {session_entry.updated_at.strftime('%Y-%m-%d %H:%M')}",
+            f"**Tokens：** {db_total_tokens:,}",
+            f"**是否執行中：** {'是 ⚡' if is_running else '否'}",
         ])
         if queue_depth:
-            lines.append(f"**Queued follow-ups:** {queue_depth}")
+            lines.append(f"**排隊中的後續訊息：** {queue_depth}")
         lines.extend([
             "",
-            f"**Connected Platforms:** {', '.join(connected_platforms)}",
+            f"**已連線平台：** {', '.join(connected_platforms)}",
         ])
 
         return "\n".join(lines)
@@ -7555,27 +7551,28 @@ class GatewayRunner:
         ]
 
         lines = [
-            "🤖 **Active Agents & Tasks**",
+            "🤖 **執行中的 Agent 與工作**",
             "",
-            f"**Active agents:** {len(agent_rows)}",
+            f"**執行中的 agent：** {len(agent_rows)}",
         ]
 
         if agent_rows:
             for idx, row in enumerate(agent_rows[:12], 1):
-                current = " · this chat" if row["session_key"] == current_session_key else ""
+                current = " · 這個聊天室" if row["session_key"] == current_session_key else ""
                 sid = f" · `{row['session_id']}`" if row["session_id"] else ""
                 model = f" · `{row['model']}`" if row["model"] else ""
+                state_label = "啟動中" if row["state"] == "starting" else "執行中"
                 lines.append(
-                    f"{idx}. `{row['session_key']}` · {row['state']} · "
+                    f"{idx}. `{row['session_key']}` · {state_label} · "
                     f"{format_uptime_short(row['elapsed'])}{sid}{model}{current}"
                 )
             if len(agent_rows) > 12:
-                lines.append(f"... and {len(agent_rows) - 12} more")
+                lines.append(f"... 還有 {len(agent_rows) - 12} 個")
 
         lines.extend(
             [
                 "",
-                f"**Running background processes:** {len(running_processes)}",
+                f"**執行中的背景 process：** {len(running_processes)}",
             ]
         )
         if running_processes:
@@ -7588,18 +7585,18 @@ class GatewayRunner:
                     f"{format_uptime_short(int(proc.get('uptime_seconds', 0)))} · `{cmd}`"
                 )
             if len(running_processes) > 12:
-                lines.append(f"... and {len(running_processes) - 12} more")
+                lines.append(f"... 還有 {len(running_processes) - 12} 個")
 
         lines.extend(
             [
                 "",
-                f"**Gateway async jobs:** {len(background_tasks)}",
+                f"**背景工作：** {len(background_tasks)}",
             ]
         )
 
         if not agent_rows and not running_processes and not background_tasks:
             lines.append("")
-            lines.append("No active agents or running tasks.")
+            lines.append("目前沒有正在執行的工作。")
 
         return "\n".join(lines)
 
@@ -7628,7 +7625,7 @@ class GatewayRunner:
                 invalidation_reason="stop_command_pending",
             )
             logger.info("STOP (pending) for session %s — sentinel cleared", session_key)
-            return EphemeralReply("⚡ Stopped. The agent hadn't started yet — you can continue this session.")
+            return EphemeralReply("⚡ 已停止。剛才尚未真正開始執行，你可以繼續這段對話。")
         if agent:
             # Force-clean the session lock so a truly hung agent doesn't
             # keep it locked forever.
@@ -7638,9 +7635,9 @@ class GatewayRunner:
                 interrupt_reason=_INTERRUPT_REASON_STOP,
                 invalidation_reason="stop_command_handler",
             )
-            return EphemeralReply("⚡ Stopped. You can continue this session.")
+            return EphemeralReply("⚡ 已停止。你可以繼續這段對話。")
         else:
-            return "No active task to stop."
+            return "目前沒有正在執行的工作可以停止。"
 
     async def _handle_restart_command(self, event: MessageEvent) -> Union[str, EphemeralReply]:
         """Handle /restart command - drain active work, then restart the gateway."""
@@ -7667,8 +7664,8 @@ class GatewayRunner:
         if self._restart_requested or self._draining:
             count = self._running_agent_count()
             if count:
-                return f"⏳ Draining {count} active agent(s) before restart..."
-            return EphemeralReply("⏳ Gateway restart already in progress...")
+                return f"⏳ 重新啟動前正在等待 {count} 個執行中的工作收尾..."
+            return EphemeralReply("⏳ Gateway 正在重新啟動中...")
 
         # Save the requester's routing info so the new gateway process can
         # notify them once it comes back online.
@@ -7719,8 +7716,8 @@ class GatewayRunner:
         else:
             self.request_restart(detached=True, via_service=False)
         if active_agents:
-            return f"⏳ Draining {active_agents} active agent(s) before restart..."
-        return EphemeralReply("♻ Restarting gateway. If you aren't notified within 60 seconds, restart from the console with `hermes gateway restart`.")
+            return f"⏳ 重新啟動前正在等待 {active_agents} 個執行中的工作收尾..."
+        return EphemeralReply("♻ Gateway 正在重新啟動。如果 60 秒內沒有收到通知，請從終端機執行 `hermes gateway restart`。")
 
     def _is_stale_restart_redelivery(self, event: MessageEvent) -> bool:
         """Return True if this /restart is a Telegram re-delivery we already handled.
@@ -7806,7 +7803,7 @@ class GatewayRunner:
             try:
                 requested_page = int(raw_args)
             except ValueError:
-                return "Usage: `/commands [page]`"
+                return "用法：`/commands [頁碼]`"
         else:
             requested_page = 1
 
@@ -7817,15 +7814,15 @@ class GatewayRunner:
             skill_cmds = get_skill_commands()
             if skill_cmds:
                 entries.append("")
-                entries.append("⚡ **Skill Commands**:")
+                entries.append("⚡ **Skill 指令**:")
                 for cmd in sorted(skill_cmds):
-                    desc = skill_cmds[cmd].get("description", "").strip() or "Skill command"
+                    desc = skill_cmds[cmd].get("description", "").strip() or "Skill 指令"
                     entries.append(f"`{cmd}` — {desc}")
         except Exception:
             pass
 
         if not entries:
-            return "No commands available."
+            return "目前沒有可用指令。"
 
         from gateway.config import Platform
         page_size = 15 if event.source.platform == Platform.TELEGRAM else 20
@@ -9179,7 +9176,7 @@ class GatewayRunner:
         _task.add_done_callback(self._background_tasks.discard)
 
         preview = prompt[:60] + ("..." if len(prompt) > 60 else "")
-        return f'🔄 Background task started: "{preview}"\nTask ID: {task_id}\nYou can keep chatting — results will appear when done.'
+        return f'🔄 背景工作已開始：「{preview}」\nTask ID：{task_id}\n你可以繼續聊天；完成後結果會自動出現。'
 
     async def _run_background_task(
         self, prompt: str, source: "SessionSource", task_id: str
@@ -9203,7 +9200,7 @@ class GatewayRunner:
             if not runtime_kwargs.get("api_key"):
                 await adapter.send(
                     source.chat_id,
-                    f"❌ Background task {task_id} failed: no provider credentials configured.",
+                    f"❌ 背景工作 {task_id} 失敗：尚未設定模型供應方憑證。",
                     metadata=_thread_metadata,
                 )
                 return
@@ -9263,7 +9260,7 @@ class GatewayRunner:
 
             response = result.get("final_response", "") if result else ""
             if not response and result and result.get("error"):
-                response = f"Error: {result['error']}"
+                response = f"錯誤：{result['error']}"
 
             # Extract media files from the response
             if response:
@@ -9271,7 +9268,7 @@ class GatewayRunner:
                 images, text_content = adapter.extract_images(response)
 
                 preview = prompt[:60] + ("..." if len(prompt) > 60 else "")
-                header = f'✅ Background task complete\nPrompt: "{preview}"\n\n'
+                header = f'✅ 背景工作完成\nPrompt：「{preview}」\n\n'
 
                 if text_content:
                     await adapter.send(
@@ -9282,7 +9279,7 @@ class GatewayRunner:
                 elif not images and not media_files:
                     await adapter.send(
                         chat_id=source.chat_id,
-                        content=header + "(No response generated)",
+                        content=header + "（沒有產生回覆）",
                         metadata=_thread_metadata,
                     )
 
@@ -9312,7 +9309,7 @@ class GatewayRunner:
                 preview = prompt[:60] + ("..." if len(prompt) > 60 else "")
                 await adapter.send(
                     chat_id=source.chat_id,
-                    content=f'✅ Background task complete\nPrompt: "{preview}"\n\n(No response generated)',
+                    content=f'✅ 背景工作完成\nPrompt：「{preview}」\n\n（沒有產生回覆）',
                     metadata=_thread_metadata,
                 )
 
@@ -9321,7 +9318,7 @@ class GatewayRunner:
             try:
                 await adapter.send(
                     chat_id=source.chat_id,
-                    content=f"❌ Background task {task_id} failed: {e}",
+                    content=f"❌ 背景工作 {task_id} 失敗：{e}",
                     metadata=_thread_metadata,
                 )
             except Exception:
@@ -9683,7 +9680,7 @@ class GatewayRunner:
         history = self.session_store.load_transcript(session_entry.session_id)
 
         if not history or len(history) < 4:
-            return "Not enough conversation to compress (need at least 4 messages)."
+            return "目前對話還不夠長，暫時不需要壓縮（至少需要 4 則訊息）。"
 
         # Extract optional focus topic from command args
         focus_topic = (event.get_command_args() or "").strip() or None
@@ -9699,7 +9696,7 @@ class GatewayRunner:
                 session_key=session_key,
             )
             if not runtime_kwargs.get("api_key"):
-                return "No provider configured -- cannot compress."
+                return "目前沒有設定可用的模型供應方，無法壓縮。"
 
             msgs = [
                 {"role": m.get("role"), "content": m.get("content")}
@@ -9731,7 +9728,7 @@ class GatewayRunner:
 
                 compressor = tmp_agent.context_compressor
                 if not compressor.has_content_to_compress(msgs):
-                    return "Nothing to compress yet (the transcript is still all protected context)."
+                    return "目前還沒有可壓縮的內容（對話仍在受保護的近期脈絡內）。"
 
                 loop = asyncio.get_running_loop()
                 compressed, _ = await loop.run_in_executor(
@@ -9777,28 +9774,28 @@ class GatewayRunner:
                 self._cleanup_agent_resources(tmp_agent)
             lines = [f"🗜️ {summary['headline']}"]
             if focus_topic:
-                lines.append(f"Focus: \"{focus_topic}\"")
+                lines.append(f"壓縮焦點：\"{focus_topic}\"")
             lines.append(summary["token_line"])
             if summary["note"]:
                 lines.append(summary["note"])
             if _summary_failed:
                 lines.append(
-                    f"⚠️ Summary generation failed ({_summary_err or 'unknown error'}). "
-                    f"{_dropped_count} historical message(s) were removed and replaced "
-                    "with a placeholder; earlier context is no longer recoverable. "
-                    "Consider checking your auxiliary.compression model configuration."
+                    f"⚠️ 摘要產生失敗（{_summary_err or 'unknown error'}）。"
+                    f"已移除 {_dropped_count} 則歷史訊息，並以佔位摘要替代；"
+                    "更早的脈絡已無法從本輪恢復。建議檢查 "
+                    "`auxiliary.compression.model` 設定。"
                 )
             elif _aux_fail_model:
                 lines.append(
-                    f"ℹ️ Configured compression model `{_aux_fail_model}` failed "
-                    f"({_aux_fail_err or 'unknown error'}). Recovered using your main "
-                    "model — context is intact — but you may want to check "
-                    "`auxiliary.compression.model` in config.yaml."
+                    f"ℹ️ 目前設定的壓縮模型 `{_aux_fail_model}` 失敗"
+                    f"（{_aux_fail_err or 'unknown error'}）。已改用主要模型完成恢復，"
+                    "脈絡仍然保留；建議檢查 config.yaml 裡的 "
+                    "`auxiliary.compression.model`。"
                 )
             return "\n".join(lines)
         except Exception as e:
             logger.warning("Manual compress failed: %s", e)
-            return f"Compression failed: {e}"
+            return f"壓縮失敗：{e}"
 
     async def _get_telegram_topic_capabilities(self, source: SessionSource) -> dict:
         """Read Telegram private-topic capability flags via Bot API getMe."""
@@ -10816,33 +10813,33 @@ class GatewayRunner:
             removed = old_servers - connected_servers
             reconnected = connected_servers & old_servers
 
-            lines = ["🔄 **MCP Servers Reloaded**\n"]
+            lines = ["🔄 **MCP server 已重新載入**\n"]
             if reconnected:
-                lines.append(f"♻️ Reconnected: {', '.join(sorted(reconnected))}")
+                lines.append(f"♻️ 已重新連線：{', '.join(sorted(reconnected))}")
             if added:
-                lines.append(f"➕ Added: {', '.join(sorted(added))}")
+                lines.append(f"➕ 已新增：{', '.join(sorted(added))}")
             if removed:
-                lines.append(f"➖ Removed: {', '.join(sorted(removed))}")
+                lines.append(f"➖ 已移除：{', '.join(sorted(removed))}")
             if not connected_servers:
-                lines.append("No MCP servers connected.")
+                lines.append("目前沒有已連線的 MCP server。")
             else:
-                lines.append(f"\n🔧 {len(new_tools)} tool(s) available from {len(connected_servers)} server(s)")
+                lines.append(f"\n🔧 目前有 {len(new_tools)} 個工具，來自 {len(connected_servers)} 個 server。")
 
             # Inject a message at the END of the session history so the
             # model knows tools changed on its next turn.  Appended after
             # all existing messages to preserve prompt-cache for the prefix.
             change_parts = []
             if added:
-                change_parts.append(f"Added servers: {', '.join(sorted(added))}")
+                change_parts.append(f"新增 server：{', '.join(sorted(added))}")
             if removed:
-                change_parts.append(f"Removed servers: {', '.join(sorted(removed))}")
+                change_parts.append(f"移除 server：{', '.join(sorted(removed))}")
             if reconnected:
-                change_parts.append(f"Reconnected servers: {', '.join(sorted(reconnected))}")
-            tool_summary = f"{len(new_tools)} MCP tool(s) now available" if new_tools else "No MCP tools available"
+                change_parts.append(f"重新連線 server：{', '.join(sorted(reconnected))}")
+            tool_summary = f"目前有 {len(new_tools)} 個 MCP 工具可用" if new_tools else "目前沒有可用 MCP 工具"
             change_detail = ". ".join(change_parts) + ". " if change_parts else ""
             reload_msg = {
                 "role": "user",
-                "content": f"[IMPORTANT: MCP servers have been reloaded. {change_detail}{tool_summary}. The tool list for this conversation has been updated accordingly.]",
+                "content": f"[重要：MCP server 已重新載入。{change_detail}{tool_summary}。這段對話的工具列表已同步更新。]",
             }
             try:
                 session_entry = self.session_store.get_or_create_session(event.source)
@@ -10856,7 +10853,7 @@ class GatewayRunner:
 
         except Exception as e:
             logger.warning("MCP reload failed: %s", e)
-            return f"❌ MCP reload failed: {e}"
+            return f"❌ MCP 重新載入失敗：{e}"
 
     async def _handle_reload_skills_command(self, event: MessageEvent) -> str:
         """Handle /reload-skills — rescan skills dir, queue a note for next turn.
@@ -11088,8 +11085,8 @@ class GatewayRunner:
         if not has_blocking_approval(session_key):
             if session_key in self._pending_approvals:
                 self._pending_approvals.pop(session_key)
-                return "⚠️ Approval expired (agent is no longer waiting). Ask the agent to try again."
-            return "No pending command to approve."
+                return "⚠️ 核准請求已過期（agent 已不再等待）。請讓我重新嘗試。"
+            return "目前沒有等待核准的指令。"
 
         # Parse args: support "all", "all session", "all always", "session", "always"
         args = event.get_command_args().strip().lower().split()
@@ -11098,26 +11095,26 @@ class GatewayRunner:
 
         if any(a in ("always", "permanent", "permanently") for a in remaining):
             choice = "always"
-            scope_msg = " (pattern approved permanently)"
+            scope_msg = "（已永久核准這個模式）"
         elif any(a in ("session", "ses") for a in remaining):
             choice = "session"
-            scope_msg = " (pattern approved for this session)"
+            scope_msg = "（已核准本對話）"
         else:
             choice = "once"
             scope_msg = ""
 
         count = resolve_gateway_approval(session_key, choice, resolve_all=resolve_all)
         if not count:
-            return "No pending command to approve."
+            return "目前沒有等待核准的指令。"
 
         # Resume typing indicator — agent is about to continue processing.
         _adapter = self.adapters.get(source.platform)
         if _adapter:
             _adapter.resume_typing_for_chat(source.chat_id)
 
-        count_msg = f" ({count} commands)" if count > 1 else ""
+        count_msg = f"（{count} 個指令）" if count > 1 else ""
         logger.info("User approved %d dangerous command(s) via /approve%s", count, scope_msg)
-        return f"✅ Command{'s' if count > 1 else ''} approved{scope_msg}{count_msg}. The agent is resuming..."
+        return f"✅ 指令已核准{scope_msg}{count_msg}。我會繼續處理..."
 
     async def _handle_deny_command(self, event: MessageEvent) -> str:
         """Handle /deny command — reject pending dangerous command(s).
@@ -11137,24 +11134,24 @@ class GatewayRunner:
         if not has_blocking_approval(session_key):
             if session_key in self._pending_approvals:
                 self._pending_approvals.pop(session_key)
-                return "❌ Command denied (approval was stale)."
-            return "No pending command to deny."
+                return "❌ 指令已拒絕（核准請求已過期）。"
+            return "目前沒有等待拒絕的指令。"
 
         args = event.get_command_args().strip().lower()
         resolve_all = "all" in args
 
         count = resolve_gateway_approval(session_key, "deny", resolve_all=resolve_all)
         if not count:
-            return "No pending command to deny."
+            return "目前沒有等待拒絕的指令。"
 
         # Resume typing indicator — agent continues (with BLOCKED result).
         _adapter = self.adapters.get(source.platform)
         if _adapter:
             _adapter.resume_typing_for_chat(source.chat_id)
 
-        count_msg = f" ({count} commands)" if count > 1 else ""
+        count_msg = f"（{count} 個指令）" if count > 1 else ""
         logger.info("User denied %d dangerous command(s) via /deny", count)
-        return f"❌ Command{'s' if count > 1 else ''} denied{count_msg}."
+        return f"❌ 指令已拒絕{count_msg}。"
 
     # Platforms where /update is allowed.  ACP, API server, and webhooks are
     # programmatic interfaces that should not trigger system updates.
@@ -11232,9 +11229,9 @@ class GatewayRunner:
                 from gateway.platform_registry import platform_registry
                 entry = platform_registry.get(platform.value)
                 if not entry or not entry.allow_update_command:
-                    return "✗ /update is only available from messaging platforms. Run `hermes update` from the terminal."
+                    return "✗ `/update` 只能從訊息平台使用。請在終端機執行 `hermes update`。"
             except Exception:
-                return "✗ /update is only available from messaging platforms. Run `hermes update` from the terminal."
+                return "✗ `/update` 只能從訊息平台使用。請在終端機執行 `hermes update`。"
 
         if is_managed():
             return f"✗ {format_managed_message('update Hermes Agent')}"
@@ -11243,15 +11240,14 @@ class GatewayRunner:
         git_dir = project_root / '.git'
 
         if not git_dir.exists():
-            return "✗ Not a git repository — cannot update."
+            return "✗ 目前不是 git repository，無法更新。"
 
         hermes_cmd = _resolve_hermes_bin()
         if not hermes_cmd:
             return (
-                "✗ Could not locate the `hermes` command. "
-                "Hermes is running, but the update command could not find the "
-                "executable on PATH or via the current Python interpreter. "
-                "Try running `hermes update` manually in your terminal."
+                "✗ 找不到 `hermes` 指令。"
+                "Gateway 正在執行，但更新流程無法從 PATH 或目前 Python interpreter 找到可執行檔。"
+                "請在終端機手動執行 `hermes update`。"
             )
 
         pending_path = _hermes_home / ".update_pending.json"
@@ -11307,10 +11303,10 @@ class GatewayRunner:
         except Exception as e:
             pending_path.unlink(missing_ok=True)
             exit_code_path.unlink(missing_ok=True)
-            return f"✗ Failed to start update: {e}"
+            return f"✗ 無法啟動更新：{e}"
 
         self._schedule_update_notification_watch()
-        return "⚕ Starting Hermes update… I'll stream progress here."
+        return "⚕ Hermes 更新已開始，我會在這裡同步進度。"
 
     def _schedule_update_notification_watch(self) -> None:
         """Ensure a background task is watching for update completion."""
@@ -11432,11 +11428,11 @@ class GatewayRunner:
                     exit_code_raw = exit_code_path.read_text().strip() or "1"
                     exit_code = int(exit_code_raw)
                     if exit_code == 0:
-                        await adapter.send(chat_id, "✅ Hermes update finished.", metadata=metadata)
+                        await adapter.send(chat_id, "✅ Hermes 更新完成。", metadata=metadata)
                     else:
                         await adapter.send(
                             chat_id,
-                            "❌ Hermes update failed (exit code {}).".format(exit_code),
+                            "❌ Hermes 更新失敗（exit code {}）。".format(exit_code),
                             metadata=metadata,
                         )
                     logger.info("Update finished (exit=%s), notified %s", exit_code, session_key)
@@ -11494,13 +11490,13 @@ class GatewayRunner:
                             except Exception as btn_err:
                                 logger.debug("Button-based update prompt failed: %s", btn_err)
                         if not sent_buttons:
-                            default_hint = f" (default: {default})" if default else ""
+                            default_hint = f"（預設：{default}）" if default else ""
                             await adapter.send(
                                 chat_id,
-                                f"⚕ **Update needs your input:**\n\n"
+                                f"⚕ **更新需要你的輸入：**\n\n"
                                 f"{prompt_text}{default_hint}\n\n"
-                                f"Reply `/approve` (yes) or `/deny` (no), "
-                                f"or type your answer directly.",
+                                f"回覆 `/approve`（是）或 `/deny`（否），"
+                                f"也可以直接輸入你的答案。",
                                 metadata=metadata,
                             )
                         self._update_prompt_pending[session_key] = True
@@ -11523,7 +11519,7 @@ class GatewayRunner:
             try:
                 await adapter.send(
                     chat_id,
-                    "❌ Hermes update timed out after 30 minutes.",
+                    "❌ Hermes 更新已逾時（30 分鐘）。",
                     metadata=metadata,
                 )
             except Exception:
@@ -11596,14 +11592,14 @@ class GatewayRunner:
                     if len(output) > 3500:
                         output = "…" + output[-3500:]
                     if exit_code == 0:
-                        msg = f"✅ Hermes update finished.\n\n```\n{output}\n```"
+                        msg = f"✅ Hermes 更新完成。\n\n```\n{output}\n```"
                     else:
-                        msg = f"❌ Hermes update failed.\n\n```\n{output}\n```"
+                        msg = f"❌ Hermes 更新失敗。\n\n```\n{output}\n```"
                 else:
                     if exit_code == 0:
-                        msg = "✅ Hermes update finished successfully."
+                        msg = "✅ Hermes 更新已成功完成。"
                     else:
-                        msg = "❌ Hermes update failed. Check the gateway logs or run `hermes update` manually for details."
+                        msg = "❌ Hermes 更新失敗。請查看 gateway log，或手動執行 `hermes update` 確認細節。"
                 await adapter.send(chat_id, msg, metadata=metadata)
                 logger.info(
                     "Sent post-update notification to %s:%s (exit=%s)",
@@ -12901,7 +12897,7 @@ class GatewayRunner:
             logger.error("Proxy connection error to %s: %s", proxy_url, e)
             if not full_response:
                 return {
-                    "final_response": f"⚠️ Proxy connection error: {e}",
+                    "final_response": f"⚠️ Proxy 連線錯誤：{e}",
                     "messages": [],
                     "api_calls": 0,
                     "tools": [],
@@ -14281,18 +14277,18 @@ class GatewayRunner:
                 if _agent_ref and hasattr(_agent_ref, "get_activity_summary"):
                     try:
                         _a = _agent_ref.get_activity_summary()
-                        _parts = [f"iteration {_a['api_call_count']}/{_a['max_iterations']}"]
+                        _parts = [f"第 {_a['api_call_count']}/{_a['max_iterations']} 輪"]
                         if _a.get("current_tool"):
-                            _parts.append(f"running: {_a['current_tool']}")
+                            _parts.append(f"正在處理：{_a['current_tool']}")
                         else:
                             _parts.append(_a.get("last_activity_desc", ""))
-                        _status_detail = " — " + ", ".join(_parts)
+                        _status_detail = "，" + "，".join(_parts)
                     except Exception:
                         pass
                 try:
                     await _notify_adapter.send(
                         source.chat_id,
-                        f"⏳ Still working... ({_elapsed_mins} min elapsed{_status_detail})",
+                        f"⏳ 還在處理中...（已執行 {_elapsed_mins} 分鐘{_status_detail}）",
                         metadata=_status_thread_metadata,
                     )
                 except Exception as _ne:
@@ -14383,10 +14379,9 @@ class GatewayRunner:
                             try:
                                 await _warn_adapter.send(
                                     source.chat_id,
-                                    f"⚠️ No activity for {_elapsed_warn} min. "
-                                    f"If the agent does not respond soon, it will "
-                                    f"be timed out in {_remaining_mins} min. "
-                                    f"You can continue waiting or use /reset.",
+                                    f"⚠️ 已經 {_elapsed_warn} 分鐘沒有新的處理活動。"
+                                    f"如果稍後仍沒有回覆，會在 {_remaining_mins} 分鐘後逾時。"
+                                    f"你可以繼續等待，或使用 `/reset` 重新開始。",
                                     metadata=_status_thread_metadata,
                                 )
                             except Exception as _warn_err:

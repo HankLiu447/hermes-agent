@@ -866,7 +866,7 @@ class HermesACPAgent(acp.Agent):
                 depth = len(state.queued_prompts)
                 if self._conn:
                     update = acp.update_agent_message_text(
-                        f"Queued for the next turn. ({depth} queued)"
+                        f"已排到下一輪。（目前共 {depth} 則排隊中）"
                     )
                     await self._conn.session_update(session_id, update)
                 return PromptResponse(stop_reason="end_turn")
@@ -1225,24 +1225,24 @@ class HermesACPAgent(acp.Agent):
             threshold_tokens = int(context_length * 0.80)
 
         lines = [
-            f"Conversation: {n_messages} messages"
+            f"對話：{n_messages} 則訊息"
             if n_messages
-            else "Conversation is empty (no messages yet).",
+            else "對話目前是空的（尚無訊息）。",
             f"  user: {roles.get('user', 0)}, assistant: {roles.get('assistant', 0)}, "
             f"tool: {roles.get('tool', 0)}, system: {roles.get('system', 0)}",
         ]
         if model:
-            lines.append(f"Model: {model}")
-        lines.append(f"Provider: {provider}")
+            lines.append(f"模型：{model}")
+        lines.append(f"供應方：{provider}")
 
         if approx_tokens > 0:
             if context_length > 0:
                 usage_pct = (approx_tokens / context_length) * 100
                 lines.append(
-                    f"Context usage: ~{approx_tokens:,} / {context_length:,} tokens ({usage_pct:.1f}%)"
+                    f"上下文用量：~{approx_tokens:,} / {context_length:,} tokens（{usage_pct:.1f}%）"
                 )
             else:
-                lines.append(f"Context usage: ~{approx_tokens:,} tokens")
+                lines.append(f"上下文用量：~{approx_tokens:,} tokens")
 
         if threshold_tokens > 0:
             if approx_tokens > 0:
@@ -1250,41 +1250,41 @@ class HermesACPAgent(acp.Agent):
                 remaining = max(threshold_tokens - approx_tokens, 0)
                 if approx_tokens >= threshold_tokens:
                     lines.append(
-                        f"Compression: due now (threshold ~{threshold_tokens:,}"
+                        f"壓縮：現在已達門檻（門檻 ~{threshold_tokens:,}"
                         + (f", {threshold_pct:.0f}%" if threshold_pct else "")
-                        + "). Run /compact."
+                        + "）。請執行 /compact。"
                     )
                 else:
                     lines.append(
-                        f"Compression: ~{remaining:,} tokens until threshold "
+                        f"壓縮：距離門檻還有 ~{remaining:,} tokens "
                         f"(~{threshold_tokens:,}"
                         + (f", {threshold_pct:.0f}%" if threshold_pct else "")
                         + ")."
                     )
             else:
-                lines.append(f"Compression threshold: ~{threshold_tokens:,} tokens")
+                lines.append(f"壓縮門檻：~{threshold_tokens:,} tokens")
 
         if getattr(agent, "compression_enabled", True) is False:
-            lines.append("Compression is disabled for this agent.")
+            lines.append("這個工作階段已停用上下文壓縮。")
         else:
-            lines.append("Tip: run /compact to compress manually before the threshold.")
+            lines.append("提示：可在達到門檻前手動執行 /compact 壓縮。")
 
         return "\n".join(lines)
 
     def _cmd_reset(self, args: str, state: SessionState) -> str:
         state.history.clear()
         self.session_manager.save_session(state.session_id)
-        return "Conversation history cleared."
+        return "對話紀錄已清空。"
 
     def _cmd_compact(self, args: str, state: SessionState) -> str:
         if not state.history:
-            return "Nothing to compress — conversation is empty."
+            return "目前沒有可壓縮的內容，對話是空的。"
         try:
             agent = state.agent
             if not getattr(agent, "compression_enabled", True):
-                return "Context compression is disabled for this agent."
+                return "這個工作階段已停用上下文壓縮。"
             if not hasattr(agent, "_compress_context"):
-                return "Context compression not available for this agent."
+                return "這個工作階段無法使用上下文壓縮。"
 
             from agent.model_metadata import estimate_request_tokens_rough
 
@@ -1323,39 +1323,39 @@ class HermesACPAgent(acp.Agent):
                 tools=_tools_after,
             )
             return (
-                f"Context compressed: {original_count} -> {new_count} messages\n"
+                f"上下文已壓縮：{original_count} -> {new_count} 則訊息\n"
                 f"~{approx_tokens:,} -> ~{new_tokens:,} tokens"
             )
         except Exception as e:
-            return f"Compression failed: {e}"
+            return f"壓縮失敗：{e}"
 
     def _cmd_steer(self, args: str, state: SessionState) -> str:
         steer_text = args.strip()
         if not steer_text:
-            return "Usage: /steer <guidance>"
+            return "用法：/steer <要加入目前這輪的補充>"
 
         if state.is_running and hasattr(state.agent, "steer"):
             try:
                 if state.agent.steer(steer_text):
                     preview = steer_text[:80] + ("..." if len(steer_text) > 80 else "")
-                    return f"⏩ Steer queued for the active turn: {preview}"
+                    return f"⏩ 已加入目前這輪：{preview}"
             except Exception as exc:
                 logger.warning("ACP steer failed for session %s: %s", state.session_id, exc)
-                return f"⚠️ Steer failed: {exc}"
+                return f"⚠️ 補充加入失敗：{exc}"
 
         with state.runtime_lock:
             state.queued_prompts.append(steer_text)
             depth = len(state.queued_prompts)
-        return f"No active turn — queued for the next turn. ({depth} queued)"
+        return f"目前沒有正在執行的工作，已排到下一輪。（目前共 {depth} 則排隊中）"
 
     def _cmd_queue(self, args: str, state: SessionState) -> str:
         queued_text = args.strip()
         if not queued_text:
-            return "Usage: /queue <prompt>"
+            return "用法：/queue <要排隊的訊息>"
         with state.runtime_lock:
             state.queued_prompts.append(queued_text)
             depth = len(state.queued_prompts)
-        return f"Queued for the next turn. ({depth} queued)"
+        return f"已排到下一輪。（目前共 {depth} 則排隊中）"
 
     def _cmd_version(self, args: str, state: SessionState) -> str:
         return f"Hermes Agent v{HERMES_VERSION}"

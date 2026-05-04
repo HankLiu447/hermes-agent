@@ -33,9 +33,9 @@ def test_manual_compress_reports_noop_without_success_banner(capsys):
         shell._manual_compress()
 
     output = capsys.readouterr().out
-    assert "No changes from compression" in output
-    assert "✅ Compressed" not in output
-    assert "Approx request size: ~100 tokens (unchanged)" in output
+    assert "壓縮後沒有變更" in output
+    assert "✅ 已壓縮" not in output
+    assert "預估請求大小：~100 tokens（未變更）" in output
 
 
 def test_manual_compress_explains_when_token_estimate_rises(capsys):
@@ -65,9 +65,9 @@ def test_manual_compress_explains_when_token_estimate_rises(capsys):
         shell._manual_compress()
 
     output = capsys.readouterr().out
-    assert "✅ Compressed: 4 → 3 messages" in output
-    assert "Approx request size: ~100 → ~120 tokens" in output
-    assert "denser summaries" in output
+    assert "✅ 已壓縮：4 → 3 則訊息" in output
+    assert "預估請求大小：~100 → ~120 tokens" in output
+    assert "預估 token 仍可能上升" in output
 
 
 def test_manual_compress_syncs_session_id_after_split():

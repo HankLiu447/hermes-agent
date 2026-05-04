@@ -335,7 +335,7 @@ class TestRunAgentViaProxy:
                         session_id="test",
                     )
 
-        assert "Proxy connection error" in result["final_response"]
+        assert "Proxy 連線錯誤" in result["final_response"]
 
     @pytest.mark.asyncio
     async def test_skips_tool_messages_in_history(self, monkeypatch):

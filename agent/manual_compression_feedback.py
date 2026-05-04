@@ -17,28 +17,27 @@ def summarize_manual_compression(
     noop = list(after_messages) == list(before_messages)
 
     if noop:
-        headline = f"No changes from compression: {before_count} messages"
+        headline = f"壓縮後沒有變更：{before_count} 則訊息"
         if after_tokens == before_tokens:
             token_line = (
-                f"Approx request size: ~{before_tokens:,} tokens (unchanged)"
+                f"預估請求大小：~{before_tokens:,} tokens（未變更）"
             )
         else:
             token_line = (
-                f"Approx request size: ~{before_tokens:,} → "
+                f"預估請求大小：~{before_tokens:,} → "
                 f"~{after_tokens:,} tokens"
             )
     else:
-        headline = f"Compressed: {before_count} → {after_count} messages"
+        headline = f"已壓縮：{before_count} → {after_count} 則訊息"
         token_line = (
-            f"Approx request size: ~{before_tokens:,} → "
+            f"預估請求大小：~{before_tokens:,} → "
             f"~{after_tokens:,} tokens"
         )
 
     note = None
     if not noop and after_count < before_count and after_tokens > before_tokens:
         note = (
-            "Note: fewer messages can still raise this estimate when "
-            "compression rewrites the transcript into denser summaries."
+            "注意：訊息數變少後，預估 token 仍可能上升，因為壓縮會把對話改寫成更密集的摘要。"
         )
 
     return {

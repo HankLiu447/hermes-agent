@@ -135,8 +135,8 @@ async def test_compress_works_with_plugin_context_engine():
     ):
         result = await runner._handle_compress_command(_make_event("/compress"))
 
-    # No AttributeError surfaced as "Compression failed: ..."
-    assert "Compression failed" not in result
+    # No AttributeError surfaced as "壓縮失敗：..."
+    assert "壓縮失敗" not in result
     assert "_align_boundary_forward" not in result
     assert "_find_tail_cut_by_tokens" not in result
     # Happy path fired
@@ -169,5 +169,5 @@ async def test_compress_respects_plugin_has_content_to_compress_false():
     ):
         result = await runner._handle_compress_command(_make_event("/compress"))
 
-    assert "Nothing to compress" in result
+    assert "沒有可壓縮的內容" in result
     agent_instance._compress_context.assert_not_called()

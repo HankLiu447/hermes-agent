@@ -82,9 +82,9 @@ async def test_compress_command_reports_noop_without_success_banner():
     ):
         result = await runner._handle_compress_command(_make_event())
 
-    assert "No changes from compression" in result
-    assert "Compressed:" not in result
-    assert "Approx request size: ~100 tokens (unchanged)" in result
+    assert "壓縮後沒有變更" in result
+    assert "已壓縮：" not in result
+    assert "預估請求大小：~100 tokens（未變更）" in result
     agent_instance.shutdown_memory_provider.assert_called_once()
     agent_instance.close.assert_called_once()
 
@@ -122,9 +122,9 @@ async def test_compress_command_explains_when_token_estimate_rises():
     ):
         result = await runner._handle_compress_command(_make_event())
 
-    assert "Compressed: 4 → 3 messages" in result
-    assert "Approx request size: ~100 → ~120 tokens" in result
-    assert "denser summaries" in result
+    assert "已壓縮：4 → 3 則訊息" in result
+    assert "預估請求大小：~100 → ~120 tokens" in result
+    assert "預估 token 仍可能上升" in result
     agent_instance.shutdown_memory_provider.assert_called_once()
     agent_instance.close.assert_called_once()
 
@@ -176,15 +176,15 @@ async def test_compress_command_appends_warning_when_summary_generation_fails():
         result = await runner._handle_compress_command(_make_event())
 
     # The compress reply itself still goes through (the transcript was rewritten).
-    assert "Compressed:" in result
+    assert "已壓縮：" in result
     # ...but a clearly-marked warning must be appended.
     assert "⚠️" in result
-    assert "Summary generation failed" in result
+    assert "摘要產生失敗" in result
     # Underlying error must surface so users can fix their config.
     assert "404 model not found" in result
     # Dropped count must be visible — silently losing N messages is the bug.
     assert "7" in result
-    assert "historical message(s) were removed" in result
+    assert "已移除 7 則歷史訊息" in result
     agent_instance.shutdown_memory_provider.assert_called_once()
     agent_instance.close.assert_called_once()
 
@@ -239,7 +239,7 @@ async def test_compress_command_surfaces_aux_model_failure_even_when_recovered()
         result = await runner._handle_compress_command(_make_event())
 
     # Compression succeeded
-    assert "Compressed:" in result
+    assert "已壓縮：" in result
     # No ⚠️ warning (that's reserved for dropped-turns case)
     assert "⚠️" not in result
     # But there IS an info note about the broken aux model
@@ -248,6 +248,6 @@ async def test_compress_command_surfaces_aux_model_failure_even_when_recovered()
     assert "404" in result
     assert "auxiliary.compression.model" in result
     # The user's context is explicitly called out as intact
-    assert "intact" in result
+    assert "脈絡仍然保留" in result
     agent_instance.shutdown_memory_provider.assert_called_once()
     agent_instance.close.assert_called_once()

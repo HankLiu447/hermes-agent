@@ -832,7 +832,7 @@ class TestSlashCommands:
         state = self._make_state(mock_manager)
         state.history = []
         result = agent._handle_slash_command("/context", state)
-        assert "empty" in result.lower()
+        assert "空的" in result
 
     def test_context_with_messages(self, agent, mock_manager):
         state = self._make_state(mock_manager)
@@ -841,7 +841,7 @@ class TestSlashCommands:
             {"role": "assistant", "content": "hi"},
         ]
         result = agent._handle_slash_command("/context", state)
-        assert "2 messages" in result
+        assert "2 則訊息" in result
         assert "user: 1" in result
 
     def test_context_shows_usage_and_compression_threshold(self, agent, mock_manager):
@@ -860,9 +860,9 @@ class TestSlashCommands:
         ):
             result = agent._handle_slash_command("/context", state)
 
-        assert "Context usage: ~25,000 / 100,000 tokens (25.0%)" in result
-        assert "Compression: ~55,000 tokens until threshold (~80,000, 80%)" in result
-        assert "Tip: run /compact" in result
+        assert "上下文用量：~25,000 / 100,000 tokens（25.0%）" in result
+        assert "壓縮：距離門檻還有 ~55,000 tokens (~80,000, 80%)." in result
+        assert "提示：可在達到門檻前手動執行 /compact 壓縮。" in result
 
     def test_context_says_compression_due_when_past_threshold(self, agent, mock_manager):
         state = self._make_state(mock_manager)
@@ -878,14 +878,14 @@ class TestSlashCommands:
         ):
             result = agent._handle_slash_command("/context", state)
 
-        assert "Context usage: ~82,000 / 100,000 tokens (82.0%)" in result
-        assert "Compression: due now (threshold ~80,000, 80%). Run /compact." in result
+        assert "上下文用量：~82,000 / 100,000 tokens（82.0%）" in result
+        assert "壓縮：現在已達門檻（門檻 ~80,000, 80%）。請執行 /compact。" in result
 
     def test_reset_clears_history(self, agent, mock_manager):
         state = self._make_state(mock_manager)
         state.history = [{"role": "user", "content": "hello"}]
         result = agent._handle_slash_command("/reset", state)
-        assert "cleared" in result.lower()
+        assert "已清空" in result
         assert len(state.history) == 0
 
     def test_version(self, agent, mock_manager):
@@ -926,7 +926,7 @@ class TestSlashCommands:
         ):
             result = agent._handle_slash_command("/compact", state)
 
-        assert "Context compressed: 4 -> 1 messages" in result
+        assert "上下文已壓縮：4 -> 1 則訊息" in result
         assert "~40 -> ~12 tokens" in result
         assert state.history == [{"role": "user", "content": "summary"}]
         assert state.agent._session_db is original_session_db

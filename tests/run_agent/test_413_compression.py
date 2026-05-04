@@ -463,7 +463,7 @@ class TestPreflightCompression:
         assert result["completed"] is True
         assert result["final_response"] == "After preflight"
         assert any(
-            ev == "lifecycle" and "Preflight compression" in msg
+            ev == "lifecycle" and "進入模型前先壓縮脈絡" in msg
             for ev, msg in status_messages
         )
 

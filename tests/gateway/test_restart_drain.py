@@ -32,7 +32,7 @@ async def test_restart_command_while_busy_requests_drain_without_interrupt(monke
 
     result = await runner._handle_message(event)
 
-    assert result == "⏳ Draining 1 active agent(s) before restart..."
+    assert result == "⏳ 重新啟動前正在等待 1 個執行中的工作收尾..."
     running_agent.interrupt.assert_not_called()
     runner.request_restart.assert_called_once_with(detached=True, via_service=False)
 
@@ -58,7 +58,7 @@ async def test_drain_queue_mode_queues_follow_up_without_interrupt():
     assert session_key in adapter._pending_messages
     assert adapter._pending_messages[session_key].text == "follow up"
     assert not adapter._active_sessions[session_key].is_set()
-    assert any("queued for the next turn" in message for message in adapter.sent)
+    assert any("已排到" in message for message in adapter.sent)
 
 
 @pytest.mark.asyncio
@@ -76,7 +76,7 @@ async def test_draining_rejects_new_session_messages():
 
     result = await runner._handle_message(event)
 
-    assert result == "⏳ Gateway is restarting and is not accepting new work right now."
+    assert result == "⏳ 系統正在重新啟動中，目前暫時不能接新的工作。"
 
 
 def test_load_busy_input_mode_prefers_env_then_config_then_default(tmp_path, monkeypatch):
@@ -190,8 +190,8 @@ async def test_shutdown_notification_sent_to_active_sessions():
     await runner._notify_active_sessions_of_shutdown()
 
     assert len(adapter.sent) == 1
-    assert "shutting down" in adapter.sent[0]
-    assert "interrupted" in adapter.sent[0]
+    assert "關閉中" in adapter.sent[0]
+    assert "中斷" in adapter.sent[0]
 
 
 @pytest.mark.asyncio
@@ -205,8 +205,8 @@ async def test_shutdown_notification_says_restarting_when_restart_requested():
     await runner._notify_active_sessions_of_shutdown()
 
     assert len(adapter.sent) == 1
-    assert "restarting" in adapter.sent[0]
-    assert "resume" in adapter.sent[0]
+    assert "重新啟動中" in adapter.sent[0]
+    assert "接續剛才的進度" in adapter.sent[0]
 
 
 @pytest.mark.asyncio
