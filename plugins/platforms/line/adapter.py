@@ -67,6 +67,15 @@ LINE_API_BASE = "https://api.line.me"
 LINE_DATA_API_BASE = "https://api-data.line.me"
 REPLY_TOKEN_TTL_SECONDS = 25.0
 MAX_MESSAGE_LENGTH = 5000
+_LINE_INTERNAL_TERM_RE = re.compile(
+    r"\bFSA(?:_[A-Z0-9]+)+\b|\b(?:FSA|FlySuiteAgent|Hermes|S1|S2|memory_core|hydrate|ontology|runtime|bridge)\b"
+    r"|system prompt|內部窗口|任務窗口|聊天窗口|記憶引擎|橋接|內部層級|內部端點|本機端點|http://127\.0\.0\.1:\d+",
+    re.IGNORECASE,
+)
+_LINE_SELF_DISCLOSURE_RE = re.compile(
+    r"(我|小熙|這邊|這裡|目前|現在|回答|回覆|透過|來自|接在|跑在|窗口|系統|架構|模式|層|橋接|端點|endpoint)",
+    re.IGNORECASE,
+)
 
 
 def _normalize_path(path: str) -> str:
@@ -121,6 +130,40 @@ def verify_signature(body: bytes, channel_secret: str, signature: str) -> bool:
     return hmac.compare_digest(computed, signature)
 
 
+def sanitize_line_reply(content: str) -> str:
+    """Remove first-person internal architecture disclosures from LINE replies."""
+    text = str(content or "")
+    if not _LINE_INTERNAL_TERM_RE.search(text):
+        return text.strip()
+
+    chunks = re.split(r"([。！？!?]\s*|\n+)", text)
+    rebuilt: list[str] = []
+    for idx in range(0, len(chunks), 2):
+        sentence = chunks[idx]
+        delimiter = chunks[idx + 1] if idx + 1 < len(chunks) else ""
+        if not sentence:
+            rebuilt.append(delimiter)
+            continue
+        has_internal = _LINE_INTERNAL_TERM_RE.search(sentence)
+        has_disclosure = _LINE_SELF_DISCLOSURE_RE.search(sentence)
+        if has_internal and has_disclosure:
+            cleaned = _LINE_INTERNAL_TERM_RE.sub("", sentence)
+            cleaned = re.sub(r"(我(?:是|在|目前|現在)?\s*(?:的)?\s*)+(?:裡|中|上)?", "我這邊", cleaned)
+            cleaned = re.sub(r"(透過|來自|接在|跑在|位於|使用)\s*(?:/|、|和|與|\s)*", "", cleaned)
+            cleaned = re.sub(r"(?:內部)?(?:窗口|系統|架構|模式|層級|層|橋接|端點)\s*", "", cleaned)
+            cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" /、，,：:-")
+            if not cleaned or cleaned in {"我這邊", "我這邊回答", "我這邊回覆"}:
+                cleaned = "我這邊可以直接處理"
+            rebuilt.append(cleaned + delimiter)
+            continue
+        rebuilt.append(sentence + delimiter)
+
+    sanitized = "".join(rebuilt)
+    sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+    sanitized = re.sub(r"[ \t]{2,}", " ", sanitized)
+    return sanitized.strip()
+
+
 def check_requirements() -> bool:
     """Return True when the adapter's Python dependencies are available."""
     return AIOHTTP_AVAILABLE
@@ -147,6 +190,7 @@ def is_connected(config) -> bool:
 class LineAdapter(BasePlatformAdapter):
     """LINE Messaging API adapter."""
 
+    SUPPORTS_MESSAGE_EDITING = False
     MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH
 
     def __init__(self, config: PlatformConfig):
@@ -348,7 +392,7 @@ class LineAdapter(BasePlatformAdapter):
         text = re.sub(r"`([^`]+)`", r"\1", text)
         text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
         text = re.sub(r"^\s{0,3}>\s?", "", text, flags=re.MULTILINE)
-        return text.strip()
+        return sanitize_line_reply(text).strip()
 
     async def _send_line_messages(self, chat_id: str, messages: list[dict[str, Any]]) -> SendResult:
         if not self.channel_access_token:

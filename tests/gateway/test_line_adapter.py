@@ -16,6 +16,7 @@ _line_mod = load_plugin_adapter("line")
 
 LineAdapter = _line_mod.LineAdapter
 check_requirements = _line_mod.check_requirements
+sanitize_line_reply = _line_mod.sanitize_line_reply
 validate_config = _line_mod.validate_config
 verify_signature = _line_mod.verify_signature
 register = _line_mod.register
@@ -77,6 +78,29 @@ def test_validate_config_from_extra():
 
 def test_check_requirements_checks_dependencies():
     assert check_requirements() is True
+
+
+def test_line_adapter_disables_message_editing():
+    assert LineAdapter.SUPPORTS_MESSAGE_EDITING is False
+
+
+def test_line_format_sanitizes_internal_self_disclosure():
+    adapter = LineAdapter(_config(channel_access_token="token", channel_secret="secret"))
+
+    text = adapter.format_message(
+        "我是在 Hermes / FSA 的 S2 bridge 裡回答，透過 memory_core ontology 內部端點。"
+    )
+
+    for forbidden in ("Hermes", "FSA", "S2", "bridge", "memory_core", "ontology", "內部端點"):
+        assert forbidden not in text
+    assert "我這邊" in text
+
+
+def test_line_sanitizer_preserves_general_engineering_endpoint_language():
+    text = sanitize_line_reply("這個 API endpoint 要支援 POST，失敗時回 4xx。")
+
+    assert "API endpoint" in text
+    assert "POST" in text
 
 
 def test_validate_config_from_env(monkeypatch):

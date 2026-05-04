@@ -1,0 +1,5 @@
+name: fsa_xiaoxi
+version: 1.0.0
+description: "FlySuite Xiaoxi context bridge for Hermes task-mode LINE conversations."
+pip_dependencies:
+  - httpx
